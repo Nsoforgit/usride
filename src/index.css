@@ -1,0 +1,10 @@
+/* Reset base index css styles to prevent layout constraints */
+html, body, #root {
+  width: 100vw !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  max-width: 100vw !important;
+  overflow: hidden !important;
+  display: block !important;
+}
