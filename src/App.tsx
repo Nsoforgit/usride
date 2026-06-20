@@ -17,7 +17,7 @@ const MainAppContent: React.FC = () => {
   // ── Logged-in as Rider ──────────────────────────────────────────────────
   if (currentRider) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f8f7ff' }}>
+      <div className="phone-screen">
         <RiderView />
       </div>
     );
@@ -26,7 +26,7 @@ const MainAppContent: React.FC = () => {
   // ── Logged-in as Driver ─────────────────────────────────────────────────
   if (currentDriver) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f8f7ff' }}>
+      <div className="phone-screen">
         <DriverView />
       </div>
     );
