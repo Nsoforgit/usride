@@ -8,7 +8,7 @@ import type { Rider, Driver, Keke, Trip, WalletTransaction, SafetyIncident, Save
 
 // ─── Type helpers (DB row → app model) ───────────────────────────────────────
 
-function dbToRider(row: Record<string, unknown>, cards: SavedCard[] = []): Rider {
+export function dbToRider(row: Record<string, unknown>, cards: SavedCard[] = []): Rider {
   return {
     id: row.id as string,
     name: row.name as string,
@@ -23,7 +23,7 @@ function dbToRider(row: Record<string, unknown>, cards: SavedCard[] = []): Rider
   };
 }
 
-function dbToDriver(row: Record<string, unknown>): Driver {
+export function dbToDriver(row: Record<string, unknown>): Driver {
   return {
     id: row.id as string,
     name: row.name as string,
@@ -45,7 +45,7 @@ function dbToDriver(row: Record<string, unknown>): Driver {
   };
 }
 
-function dbToKeke(row: Record<string, unknown>): Keke {
+export function dbToKeke(row: Record<string, unknown>): Keke {
   return {
     id: Number(row.id),
     driverId: (row.driver_id as string | null) ?? null,
@@ -61,7 +61,7 @@ function dbToKeke(row: Record<string, unknown>): Keke {
   };
 }
 
-function dbToTrip(row: Record<string, unknown>): Trip {
+export function dbToTrip(row: Record<string, unknown>): Trip {
   return {
     id: row.id as string,
     rideType: row.ride_type as 'shared' | 'drop',
@@ -86,7 +86,7 @@ function dbToTrip(row: Record<string, unknown>): Trip {
   };
 }
 
-function dbToTransaction(row: Record<string, unknown>): WalletTransaction {
+export function dbToTransaction(row: Record<string, unknown>): WalletTransaction {
   return {
     id: row.id as string,
     userId: row.user_id as string,
@@ -99,7 +99,7 @@ function dbToTransaction(row: Record<string, unknown>): WalletTransaction {
   };
 }
 
-function dbToIncident(row: Record<string, unknown>): SafetyIncident {
+export function dbToIncident(row: Record<string, unknown>): SafetyIncident {
   return {
     id: row.id as string,
     riderId: row.rider_id as string,

@@ -1,9 +1,11 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { fetchGoogleRoute, getDistanceMeters } from '../utils/geofence';
+import { supabase } from '../lib/supabase';
 import {
   fetchAllRiders, fetchAllDrivers, fetchAllVehicles, fetchAllTrips, fetchAllTransactions, fetchAllIncidents,
   upsertRider, upsertDriver, upsertVehicle, insertTrip, updateTripStatus, insertTransaction, insertIncident,
-  deleteAllUserData
+  deleteAllUserData,
+  dbToRider, dbToDriver, dbToKeke, dbToTrip, dbToTransaction, dbToIncident
 } from '../lib/db';
 
 export const GOOGLE_MAPS_API_KEY = "AIzaSyBAf1ytrEZjvqOVpHwmmO5Xb5GUzdy5AB0";
@@ -434,6 +436,173 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── 4. Supabase Realtime Listener ───────────────────────────────────────
+  useEffect(() => {
+    // 1. Trips Channel
+    const tripsChannel = supabase
+      .channel('realtime-trips')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'trips' },
+        (payload) => {
+          console.log('[Realtime] Trip change received:', payload);
+          if (payload.eventType === 'INSERT') {
+            const freshTrip = dbToTrip(payload.new);
+            setTrips(prev => {
+              if (prev.some(t => t.id === freshTrip.id)) return prev;
+              return [freshTrip, ...prev];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const freshTrip = dbToTrip(payload.new);
+            setTrips(prev => prev.map(t => t.id === freshTrip.id ? freshTrip : t));
+          } else if (payload.eventType === 'DELETE') {
+            setTrips(prev => prev.filter(t => t.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    // 2. Vehicles Channel
+    const vehiclesChannel = supabase
+      .channel('realtime-vehicles')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'vehicles' },
+        (payload) => {
+          console.log('[Realtime] Vehicle change received:', payload);
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const freshKeke = dbToKeke(payload.new);
+            setKekes(prev => {
+              const exists = prev.some(k => k.id === freshKeke.id);
+              if (exists) {
+                return prev.map(k => k.id === freshKeke.id ? freshKeke : k);
+              } else {
+                return [...prev, freshKeke];
+              }
+            });
+          } else if (payload.eventType === 'DELETE') {
+            setKekes(prev => prev.filter(k => k.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    // 3. Drivers Channel
+    const driversChannel = supabase
+      .channel('realtime-drivers')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'drivers' },
+        (payload) => {
+          console.log('[Realtime] Driver change received:', payload);
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const freshDriver = dbToDriver(payload.new);
+            setDrivers(prev => {
+              const exists = prev.some(d => d.id === freshDriver.id);
+              if (exists) {
+                return prev.map(d => d.id === freshDriver.id ? freshDriver : d);
+              } else {
+                return [...prev, freshDriver];
+              }
+            });
+            setCurrentDriver(prev => {
+              if (prev && prev.id === freshDriver.id) {
+                return freshDriver;
+              }
+              return prev;
+            });
+          } else if (payload.eventType === 'DELETE') {
+            setDrivers(prev => prev.filter(d => d.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    // 4. Riders Channel
+    const ridersChannel = supabase
+      .channel('realtime-riders')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'riders' },
+        (payload) => {
+          console.log('[Realtime] Rider change received:', payload);
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            setRiders(prev => {
+              const matched = prev.find(r => r.id === payload.new.id);
+              const freshRider = dbToRider(payload.new, matched?.savedCards || []);
+              const exists = prev.some(r => r.id === freshRider.id);
+              if (exists) {
+                return prev.map(r => r.id === freshRider.id ? freshRider : r);
+              } else {
+                return [...prev, freshRider];
+              }
+            });
+            setCurrentRider(prev => {
+              if (prev && prev.id === payload.new.id) {
+                return dbToRider(payload.new, prev.savedCards || []);
+              }
+              return prev;
+            });
+          } else if (payload.eventType === 'DELETE') {
+            setRiders(prev => prev.filter(r => r.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    // 5. Safety Incidents Channel
+    const incidentsChannel = supabase
+      .channel('realtime-incidents')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'safety_incidents' },
+        (payload) => {
+          console.log('[Realtime] Incident change received:', payload);
+          if (payload.eventType === 'INSERT') {
+            const freshIncident = dbToIncident(payload.new);
+            setSafetyIncidents(prev => {
+              if (prev.some(i => i.id === freshIncident.id)) return prev;
+              return [freshIncident, ...prev];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const freshIncident = dbToIncident(payload.new);
+            setSafetyIncidents(prev => prev.map(i => i.id === freshIncident.id ? freshIncident : i));
+          } else if (payload.eventType === 'DELETE') {
+            setSafetyIncidents(prev => prev.filter(i => i.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    // 6. Transactions Channel
+    const transactionsChannel = supabase
+      .channel('realtime-transactions')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wallet_transactions' },
+        (payload) => {
+          console.log('[Realtime] Transaction change received:', payload);
+          if (payload.eventType === 'INSERT') {
+            const freshTx = dbToTransaction(payload.new);
+            setTransactions(prev => {
+              if (prev.some(t => t.id === freshTx.id)) return prev;
+              return [freshTx, ...prev];
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      tripsChannel.unsubscribe();
+      vehiclesChannel.unsubscribe();
+      driversChannel.unsubscribe();
+      ridersChannel.unsubscribe();
+      incidentsChannel.unsubscribe();
+      transactionsChannel.unsubscribe();
+    };
+  }, []);
+
   // Sync current Keke state when kekes list updates
   useEffect(() => {
     if (currentDriver) {
@@ -484,7 +653,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Set their keke online
       setKekes(prev => prev.map(k => {
         if (k.id === found.kekeId) {
-          return { ...k, driverId: found.id, isOnline: true };
+          const updated = { ...k, driverId: found.id, isOnline: true };
+          upsertVehicle(updated).catch(console.error);
+          return updated;
         }
         return k;
       }));
@@ -498,7 +669,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Set their keke offline
       setKekes(prev => prev.map(k => {
         if (k.id === currentDriver.kekeId) {
-          return { ...k, isOnline: false };
+          const updated = { ...k, isOnline: false };
+          upsertVehicle(updated).catch(console.error);
+          return updated;
         }
         return k;
       }));
@@ -511,7 +684,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!currentDriver) return;
     setKekes(prev => prev.map(k => {
       if (k.id === currentDriver.kekeId) {
-        return { ...k, isOnline: !k.isOnline };
+        const updated = { ...k, isOnline: !k.isOnline };
+        upsertVehicle(updated).catch(console.error);
+        return updated;
       }
       return k;
     }));
@@ -522,11 +697,13 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!currentDriver) return;
     setKekes(prev => prev.map(k => {
       if (k.id === currentDriver.kekeId) {
-        return { 
+        const updated = { 
           ...k, 
           currentBatteryPercent: batteryPercent,
           estimatedHoursRemaining: hoursRemaining 
         };
+        upsertVehicle(updated).catch(console.error);
+        return updated;
       }
       return k;
     }));
@@ -542,6 +719,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           cashCollectedToday: cashCollected 
         };
         setCurrentDriver(updated);
+        upsertDriver(updated).catch(console.error);
         return updated;
       }
       return d;
@@ -668,6 +846,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       return t;
     }));
+    updateTripStatus(tripId, 'cancelled').catch(console.error);
 
     // Release keke seats if driver was already assigned
     const trip = trips.find(t => t.id === tripId);
@@ -676,7 +855,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (k.id === trip.kekeId) {
           const maxSeats = k.vehicleType === 'keke' ? 5 : 4;
           const releasedSeats = trip.seatsBooked || (trip.rideType === 'drop' ? maxSeats : 1);
-          return { ...k, currentSeatsAvailable: Math.min(maxSeats, k.currentSeatsAvailable + releasedSeats) };
+          const updatedKeke = { ...k, currentSeatsAvailable: Math.min(maxSeats, k.currentSeatsAvailable + releasedSeats) };
+          upsertVehicle(updatedKeke).catch(console.error);
+          return updatedKeke;
         }
         return k;
       }));
@@ -725,6 +906,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const updatedCards = [...(r.savedCards || []), newCard];
         const updated = { ...r, savedCards: updatedCards };
         setCurrentRider(updated);
+        upsertRider(updated).catch(console.error);
         return updated;
       }
       return r;
@@ -738,6 +920,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const updatedCards = (r.savedCards || []).filter(c => c.id !== cardId);
         const updated = { ...r, savedCards: updatedCards };
         setCurrentRider(updated);
+        upsertRider(updated).catch(console.error);
         return updated;
       }
       return r;
@@ -789,6 +972,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         return t;
       }));
+      updateTripStatus(tripId, 'cancelled').catch(console.error);
       showModal({
         title: "Booking Cancelled",
         message: "🛺 The driver declined your request. Your trip has been cancelled.",
@@ -1087,8 +1271,21 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (!activeTrip) {
             if (keke.speed > 0) {
               updated = true;
-              return { ...keke, speed: 0 };
+              const updatedKeke = { ...keke, speed: 0 };
+              if (currentDriver && keke.id === currentDriver.kekeId) {
+                upsertVehicle(updatedKeke).catch(console.error);
+              }
+              return updatedKeke;
             }
+            return keke;
+          }
+
+          // ONLY update coordinate if this tab owns this vehicle (i.e. is the logged-in driver)
+          // OR if we are in the admin/sandbox view and want to run mock simulation (to keep compatibility)
+          const isOwner = currentDriver && keke.id === currentDriver.kekeId;
+          const isSimulatorView = activeView === 'simulator';
+          
+          if (!isOwner && !isSimulatorView) {
             return keke;
           }
 
@@ -1138,12 +1335,17 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 setTrips(prevTrips => prevTrips.map(t => 
                   t.id === activeTrip.id ? { ...t, status: 'active' } : t
                 ));
+                updateTripStatus(activeTrip.id, 'active').catch(console.error);
               }, 1000);
             }
             
             if (keke.speed > 0) {
               updated = true;
-              return { ...keke, speed: 0, lat: target.lat, lng: target.lng };
+              const updatedKeke = { ...keke, speed: 0, lat: target.lat, lng: target.lng };
+              if (isOwner) {
+                upsertVehicle(updatedKeke).catch(console.error);
+              }
+              return updatedKeke;
             }
             return keke;
           }
@@ -1153,12 +1355,16 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const angle = Math.atan2(dy, dx);
           
           updated = true;
-          return {
+          const updatedKeke = {
             ...keke,
             lat: keke.lat + Math.sin(angle) * stepSize * 0.7,
             lng: keke.lng + Math.cos(angle) * stepSize * 0.7,
             speed: 25 // mock speed in km/h
           };
+          if (isOwner) {
+            upsertVehicle(updatedKeke).catch(console.error);
+          }
+          return updatedKeke;
         });
 
         return updated ? nextKekes : prevKekes;
@@ -1166,7 +1372,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [trips]);
+  }, [trips, currentDriver, activeView]);
 
   // ─── Reset simulator database to defaults ─────────────────────────────────
   const resetSimulatorDatabase = () => {
