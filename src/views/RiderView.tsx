@@ -315,11 +315,6 @@ export const RiderView: React.FC = () => {
   if (!currentRider) {
     return (
       <div className="phone-screen" style={{ backgroundColor: '#0f172a', color: 'white' }}>
-        <div className="phone-status-bar">
-          <span>USRide Rider</span>
-          <span>12:00 PM</span>
-        </div>
-        
         <div className="phone-content" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
             <div className="logo-badge" style={{ margin: '0 auto 10px auto' }}>US</div>
@@ -442,14 +437,6 @@ export const RiderView: React.FC = () => {
 
   return (
     <div className="phone-screen">
-      {/* Phone Status bar */}
-      <div className="phone-status-bar">
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <User size={10} /> {currentRider.name.split(' ')[0]}
-        </span>
-        <span>12:00 PM</span>
-      </div>
-
       {/* Main app header */}
       <div className="phone-navbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

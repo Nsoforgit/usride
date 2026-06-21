@@ -222,9 +222,9 @@ body {
   min-height: 100vh;       /* fallback */
 }
 
-/* On screens wider than 500px, centre the app like a phone */
+/* On screens wider than 500px, centre the app like a phone if active */
 @media (min-width: 500px) {
-  body {
+  body:has(.phone-screen) {
     display: flex;
     justify-content: center;
     align-items: flex-start;

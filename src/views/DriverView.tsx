@@ -232,11 +232,6 @@ export const DriverView: React.FC = () => {
   if (!currentDriver || !currentKeke) {
     return (
       <div className="phone-screen" style={{ backgroundColor: '#022c22', color: 'white' }}>
-        <div className="phone-status-bar" style={{ backgroundColor: '#022c22' }}>
-          <span>USRide Driver Portal</span>
-          <span>12:00 PM</span>
-        </div>
-        
         <div className="phone-content" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
             <div className="logo-badge" style={{ margin: '0 auto 10px auto', background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white' }}>DR</div>
@@ -300,14 +295,6 @@ export const DriverView: React.FC = () => {
 
   return (
     <div className="phone-screen">
-      {/* Phone Status bar */}
-      <div className="phone-status-bar" style={{ backgroundColor: currentDriver.vehicleType === 'keke' ? '#064e3b' : '#1e3a8a' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <User size={10} /> {currentDriver.name.split(' ')[0]} ({currentDriver.vehicleType === 'keke' ? `Keke ${currentKeke.id}` : `Cab ${currentKeke.id}`})
-        </span>
-        <span>12:00 PM</span>
-      </div>
-
       {/* Main app header */}
       <div className="phone-navbar" style={{ backgroundColor: currentDriver.vehicleType === 'keke' ? '#064e3b' : '#1e3a8a' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
