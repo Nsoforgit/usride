@@ -525,55 +525,47 @@ export const RiderView: React.FC = () => {
               </div>
 
               <div>
-                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold' }}>Profile Photo URL</label>
-                <input 
-                  type="text" 
-                  className="landmark-select-item" 
-                  style={{ width: '100%', padding: '10px', fontSize: '12px', color: '#334155', border: '1px solid #cbd5e1' }}
-                  placeholder="Enter custom image URL..."
-                  value={editPhoto}
-                  onChange={(e) => setEditPhoto(e.target.value)}
-                />
-              </div>
-
-              {/* Avatar Preset Grid */}
-              <div style={{ marginTop: '6px' }}>
-                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
-                  Choose Avatar Preset
-                </label>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {[
-                    { name: 'Student 1', url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&q=80' },
-                    { name: 'Student 2', url: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=150&q=80' },
-                    { name: 'Student 3', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80' },
-                    { name: 'Staff 1', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&q=80' },
-                    { name: 'Staff 2', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80' }
-                  ].map((preset, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setEditPhoto(preset.url)}
+                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Profile Photo</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <img
+                    src={editPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'}
+                    alt="Preview"
+                    style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--uniben-purple)', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <label
+                      htmlFor="rider-photo-upload"
                       style={{
-                        padding: 0,
-                        border: editPhoto === preset.url ? '3px solid var(--uniben-green)' : '1px solid #cbd5e1',
-                        borderRadius: '50%',
-                        overflow: 'hidden',
-                        cursor: 'pointer',
-                        width: '40px',
-                        height: '40px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s ease',
-                        transform: editPhoto === preset.url ? 'scale(1.1)' : 'scale(1)'
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        padding: '10px 14px', borderRadius: '10px', cursor: 'pointer', fontSize: '12px',
+                        fontWeight: '600', border: '2px dashed var(--uniben-purple)', color: 'var(--uniben-purple)',
+                        backgroundColor: '#f5f3ff', transition: 'all 0.2s ease', width: '100%'
                       }}
-                      title={preset.name}
                     >
-                      <img src={preset.url} alt={preset.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </button>
-                  ))}
+                      📷 Upload Photo
+                    </label>
+                    <input
+                      id="rider-photo-upload"
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          showModal({ title: 'File Too Large', message: 'Please choose an image under 2 MB.', type: 'warning' });
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = () => setEditPhoto(reader.result as string);
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                    <p style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', textAlign: 'center' }}>JPG, PNG or WebP · max 2 MB</p>
+                  </div>
                 </div>
               </div>
+
 
               <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                 <button

@@ -743,3 +743,15 @@ body {
 .app-notification.warning {
   background-color: #b91c1c;
 }
+
+/* ─── ConnectionToast animations ─────────────────────────────────────────── */
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to   { opacity: 1; transform: translate(-50%, 0);    }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+

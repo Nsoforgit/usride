@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import type { ConnectionStatus } from '../components/ConnectionToast';
 import { fetchGoogleRoute, getDistanceMeters } from '../utils/geofence';
 import { supabase } from '../lib/supabase';
 import {
@@ -307,6 +308,7 @@ function generateDefaultKekes(): Keke[] {
 
 // Context Type
 interface USRideContextType {
+  realtimeStatus: ConnectionStatus;
   riders: Rider[];
   drivers: Driver[];
   kekes: Keke[];
@@ -369,6 +371,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [transactions, setTransactions] = useState<WalletTransaction[]>(() => lsGet(LS_KEYS.transactions, []));
   const [safetyIncidents, setSafetyIncidents] = useState<SafetyIncident[]>(() => lsGet(LS_KEYS.safetyIncidents, []));
   const [modalConfig, setModalConfig] = useState<AppNotification | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState<ConnectionStatus>('connecting');
 
   const showModal = (config: AppNotification) => setModalConfig(config);
   const hideModal = () => setModalConfig(null);
@@ -438,6 +441,24 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // ─── 4. Supabase Realtime Listener ───────────────────────────────────────
   useEffect(() => {
+    let connectedCount = 0;
+    const TOTAL_CHANNELS = 6;
+
+    const handleStatus = (channelName: string, status: string) => {
+      console.log(`[Realtime] ${channelName} channel:`, status);
+      if (status === 'SUBSCRIBED') {
+        connectedCount += 1;
+        if (connectedCount >= TOTAL_CHANNELS) {
+          setRealtimeStatus('connected');
+        }
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        setRealtimeStatus('disconnected');
+        connectedCount = Math.max(0, connectedCount - 1);
+      } else {
+        if (connectedCount === 0) setRealtimeStatus('connecting');
+      }
+    };
+
     // 1. Trips Channel
     const tripsChannel = supabase
       .channel('realtime-trips')
@@ -460,7 +481,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => handleStatus('trips', status));
 
     // 2. Vehicles Channel
     const vehiclesChannel = supabase
@@ -485,7 +506,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => handleStatus('vehicles', status));
 
     // 3. Drivers Channel
     const driversChannel = supabase
@@ -516,7 +537,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => handleStatus('drivers', status));
 
     // 4. Riders Channel
     const ridersChannel = supabase
@@ -548,7 +569,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => handleStatus('riders', status));
 
     // 5. Safety Incidents Channel
     const incidentsChannel = supabase
@@ -572,7 +593,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => handleStatus('incidents', status));
 
     // 6. Transactions Channel
     const transactionsChannel = supabase
@@ -591,7 +612,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => handleStatus('transactions', status));
 
     return () => {
       tripsChannel.unsubscribe();
@@ -819,21 +840,23 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTrips(prev => [...prev, newTrip]);
     insertTrip(newTrip).catch(console.error);
 
-    // 60-second accept window timeout
+    // 90-second accept window timeout
     setTimeout(() => {
       setTrips(prev => {
         const trip = prev.find(t => t.id === newTrip.id);
         if (trip && trip.status === 'requested') {
           showModal({
             title: "Booking Timeout",
-            message: "⏱️ No driver accepted your request within 1 minute. The request has been cancelled.",
+            message: "⏱️ No driver accepted your request within 90 seconds. The request has been cancelled.",
             type: 'warning'
           });
+          // Persist cancellation to DB so all tabs see the update via Realtime
+          updateTripStatus(newTrip.id, 'cancelled').catch(console.error);
           return prev.map(t => t.id === newTrip.id ? { ...t, status: 'cancelled' as const } : t);
         }
         return prev;
       });
-    }, 60000);
+    }, 90000);
 
     return newTrip;
   };
@@ -1027,8 +1050,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const fare = trip.totalFare;
     const transferFee = trip.transferFee || 20;
     const totalCharged = trip.totalFare + transferFee;
-    
-    // Debit riders
+
+    // Debit riders — collect updated riders then persist to Supabase (triggers Realtime on rider's tab)
+    const updatedRiders: Rider[] = [];
     setRiders(prev => prev.map(r => {
       if (trip.riderIds.includes(r.id)) {
         const updated = { 
@@ -1036,19 +1060,21 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           walletBalance: Math.max(0, r.walletBalance - totalCharged),
           totalTrips: r.totalTrips + 1
         };
-        // Update currentRider context if they are active
         if (currentRider && currentRider.id === r.id) {
           setCurrentRider(updated);
         }
+        updatedRiders.push(updated);
         return updated;
       }
       return r;
     }));
+    // Persist each debited rider to Supabase → Realtime updates their tab
+    updatedRiders.forEach(r => upsertRider(r).catch(console.error));
 
-    // Log Rider debits
-    trip.riderIds.forEach(rId => {
+    // Log & persist rider debit transactions
+    trip.riderIds.forEach((rId, idx) => {
       const riderTx: WalletTransaction = {
-        id: `tx-deb-${Date.now()}-${rId}`,
+        id: `tx-deb-${Date.now()}-${idx}-${rId}`,
         userId: rId,
         userType: 'rider',
         type: 'debit',
@@ -1058,6 +1084,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         createdAt: new Date().toISOString()
       };
       setTransactions(prev => [riderTx, ...prev]);
+      insertTransaction(riderTx).catch(console.error);
     });
 
     // Credit driver
@@ -1072,6 +1099,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (currentDriver && currentDriver.id === d.id) {
             setCurrentDriver(updated);
           }
+          upsertDriver(updated).catch(console.error);
           return updated;
         }
         return d;
@@ -1089,7 +1117,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         createdAt: new Date().toISOString()
       };
       setTransactions(prev => [driverTx, ...prev]);
+      insertTransaction(driverTx).catch(console.error);
     }
+
 
     // 4. Reset keke seats & reduce battery
     setKekes(prev => prev.map(k => {
@@ -1393,6 +1423,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   return (
     <USRideContext.Provider value={{
+      realtimeStatus,
       riders,
       drivers,
       kekes,

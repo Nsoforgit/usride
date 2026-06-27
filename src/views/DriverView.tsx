@@ -129,14 +129,14 @@ export const DriverView: React.FC = () => {
 
       if (isEligible) {
         setIncomingTrip(pendingRequest);
-        setTimerCount(60); // 1-minute accept window
+        setTimerCount(90); // 90-second accept window
       }
     } else {
       setIncomingTrip(null);
     }
   }, [trips, currentDriver, currentKeke, driverActiveTrip]);
 
-  // 60-second countdown timer for incoming request
+  // 90-second countdown timer for incoming request
   useEffect(() => {
     if (!incomingTrip) return;
 
@@ -146,7 +146,7 @@ export const DriverView: React.FC = () => {
           clearInterval(timer);
           declineTrip(incomingTrip.id);
           setIncomingTrip(null);
-          return 60;
+          return 90;
         }
         return prev - 1;
       });
@@ -478,55 +478,49 @@ export const DriverView: React.FC = () => {
               </div>
 
               <div>
-                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold' }}>Profile Photo URL</label>
-                <input 
-                  type="text" 
-                  className="landmark-select-item" 
-                  style={{ width: '100%', padding: '10px', fontSize: '12px', color: '#334155', border: '1px solid #cbd5e1' }}
-                  placeholder="Enter custom image URL..."
-                  value={editPhoto}
-                  onChange={(e) => setEditPhoto(e.target.value)}
-                />
-              </div>
-
-              {/* Avatar Preset Grid */}
-              <div style={{ marginTop: '6px' }}>
-                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
-                  Choose Avatar Preset
-                </label>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {[
-                    { name: 'Sunday', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80' },
-                    { name: 'Musa', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80' },
-                    { name: 'Efosa', url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=150&q=80' },
-                    { name: 'Alao', url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80' },
-                    { name: 'Kingsley', url: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=150&q=80' }
-                  ].map((preset, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setEditPhoto(preset.url)}
+                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Profile Photo</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <img
+                    src={editPhoto || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80'}
+                    alt="Preview"
+                    style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${currentDriver.vehicleType === 'keke' ? '#064e3b' : '#1e3a8a'}`, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <label
+                      htmlFor="driver-photo-upload"
                       style={{
-                        padding: 0,
-                        border: editPhoto === preset.url ? '3px solid var(--uniben-green)' : '1px solid #cbd5e1',
-                        borderRadius: '50%',
-                        overflow: 'hidden',
-                        cursor: 'pointer',
-                        width: '40px',
-                        height: '40px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s ease',
-                        transform: editPhoto === preset.url ? 'scale(1.1)' : 'scale(1)'
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        padding: '10px 14px', borderRadius: '10px', cursor: 'pointer', fontSize: '12px',
+                        fontWeight: '600', border: `2px dashed ${currentDriver.vehicleType === 'keke' ? '#064e3b' : '#1e3a8a'}`,
+                        color: currentDriver.vehicleType === 'keke' ? '#064e3b' : '#1e3a8a',
+                        backgroundColor: currentDriver.vehicleType === 'keke' ? '#f0fdf4' : '#eff6ff',
+                        transition: 'all 0.2s ease', width: '100%'
                       }}
-                      title={preset.name}
                     >
-                      <img src={preset.url} alt={preset.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </button>
-                  ))}
+                      📷 Upload Photo
+                    </label>
+                    <input
+                      id="driver-photo-upload"
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          showModal({ title: 'File Too Large', message: 'Please choose an image under 2 MB.', type: 'warning' });
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = () => setEditPhoto(reader.result as string);
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                    <p style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', textAlign: 'center' }}>JPG, PNG or WebP · max 2 MB</p>
+                  </div>
                 </div>
               </div>
+
 
               <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                 <button
