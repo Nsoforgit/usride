@@ -6,84 +6,66 @@ import { AdminView } from './views/AdminView';
 import { LandingPage } from './views/LandingPage';
 import { AuthView } from './views/AuthView';
 import { CustomModal } from './components/CustomModal';
-import { ConnectionToast } from './components/ConnectionToast';
 import './styles/app.css';
 
 type AppScreen = 'landing' | 'auth-rider' | 'auth-driver' | 'admin';
 
 const MainAppContent: React.FC = () => {
-  const { currentRider, currentDriver, activeView, setActiveView, realtimeStatus } = useUSRide();
+  const { currentRider, currentDriver, activeView, setActiveView } = useUSRide();
   const [screen, setScreen] = useState<AppScreen>('landing');
-
-  const toast = <ConnectionToast status={realtimeStatus} />;
 
   // ── Logged-in as Rider ──────────────────────────────────────────────────
   if (currentRider) {
     return (
-      <>
-        <div className="phone-screen">
-          <RiderView />
-        </div>
-        {toast}
-      </>
+      <div className="phone-screen">
+        <RiderView />
+      </div>
     );
   }
 
   // ── Logged-in as Driver ─────────────────────────────────────────────────
   if (currentDriver) {
     return (
-      <>
-        <div className="phone-screen">
-          <DriverView />
-        </div>
-        {toast}
-      </>
+      <div className="phone-screen">
+        <DriverView />
+      </div>
     );
   }
 
   // ── Admin Portal (hidden — only accessible via logo tap) ────────────────
   if (activeView === 'admin' || screen === 'admin') {
-    return <>{<AdminView />}{toast}</>;
+    return <AdminView />;
   }
 
   // ── Auth Screens ────────────────────────────────────────────────────────
   if (screen === 'auth-rider') {
     return (
-      <>
-        <AuthView
-          defaultRole="rider"
-          onBack={() => setScreen('landing')}
-        />
-        {toast}
-      </>
+      <AuthView
+        defaultRole="rider"
+        onBack={() => setScreen('landing')}
+      />
     );
   }
 
   if (screen === 'auth-driver') {
     return (
-      <>
-        <AuthView
-          defaultRole="driver"
-          onBack={() => setScreen('landing')}
-        />
-        {toast}
-      </>
+      <AuthView
+        defaultRole="driver"
+        onBack={() => setScreen('landing')}
+      />
     );
   }
 
   // ── Landing Page (default) ──────────────────────────────────────────────
   return (
-    <>
-      <LandingPage
-        onGetRide={() => setScreen('auth-rider')}
-        onBeDriver={() => setScreen('auth-driver')}
-        onAdminAccess={() => {
-          setActiveView('admin');
-          setScreen('admin');
-        }}
-      />
-      {toast}
-    </>
+    <LandingPage
+      onGetRide={() => setScreen('auth-rider')}
+      onBeDriver={() => setScreen('auth-driver')}
+      onAdminAccess={() => {
+        setActiveView('admin');
+        setScreen('admin');
+      }}
+    />
   );
 };
 
