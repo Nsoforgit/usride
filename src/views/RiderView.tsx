@@ -249,20 +249,58 @@ export const RiderView: React.FC = () => {
   const handleProcessTopup = (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(topupAmount);
-    if (isNaN(amt) || amt <= 0) return;
+    if (isNaN(amt) || amt < 100) {
+      showModal({ title: 'Minimum Amount', message: 'Minimum top-up amount is ₦100.', type: 'warning' });
+      return;
+    }
+    if (!currentRider?.email) return;
 
     setIsProcessingTopup(true);
-    // Simulate Paystack checkout sheet delay
-    setTimeout(() => {
-      riderTopUpWallet(amt);
-      synthSound.playCashRegister();
+
+    // Use the real Paystack Inline popup
+    // PaystackPop is loaded globally from the <script> tag in index.html
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const PaystackPop = (window as any).PaystackPop;
+    if (!PaystackPop) {
+      showModal({ title: 'Payment Error', message: 'Paystack SDK failed to load. Please check your internet connection and try again.', type: 'warning' });
       setIsProcessingTopup(false);
-      setTopupSuccess(true);
-      setTimeout(() => {
-        setTopupSuccess(false);
-        setBookingStep('idle');
-      }, 1500);
-    }, 1500);
+      return;
+    }
+
+    const handler = PaystackPop.setup({
+      key: 'pk_test_26e1483b6bd02ecaff90d237ab3d0ad5f331d9f0',
+      email: currentRider.email,
+      amount: amt * 100, // Paystack uses kobo (smallest unit)
+      currency: 'NGN',
+      ref: `usride-topup-${currentRider.id}-${Date.now()}`,
+      metadata: {
+        rider_id: currentRider.id,
+        rider_name: currentRider.name,
+        custom_fields: [
+          { display_name: 'Rider Name', variable_name: 'rider_name', value: currentRider.name },
+          { display_name: 'Rider ID', variable_name: 'rider_id', value: currentRider.id },
+        ],
+      },
+      callback: (response: { reference: string }) => {
+        // Payment was completed on Paystack's side.
+        // The webhook (Edge Function) will credit the wallet in the DB.
+        // Supabase Realtime will broadcast the new balance to this tab automatically.
+        console.log('[Paystack] Payment successful, reference:', response.reference);
+        setIsProcessingTopup(false);
+        synthSound.playCashRegister();
+        setTopupSuccess(true);
+        setTimeout(() => {
+          setTopupSuccess(false);
+          setBookingStep('idle');
+        }, 2500);
+      },
+      onClose: () => {
+        // User closed the popup without completing payment
+        setIsProcessingTopup(false);
+      },
+    });
+
+    handler.openIframe();
   };
 
   const handleCardSubmit = (e: React.FormEvent) => {
