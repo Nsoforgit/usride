@@ -157,6 +157,29 @@ export async function upsertRider(rider: Rider): Promise<void> {
   }
 }
 
+/**
+ * Lightweight update — only touches wallet_balance and total_trips.
+ * Use this after trip completion to avoid re-writing saved_cards.
+ */
+export async function updateRiderBalance(riderId: string, walletBalance: number, totalTrips: number): Promise<void> {
+  const { error } = await supabase
+    .from('riders')
+    .update({ wallet_balance: walletBalance, total_trips: totalTrips })
+    .eq('id', riderId);
+  if (error) throw error;
+}
+
+/**
+ * Lightweight update — only touches wallet_balance and total_trips for a driver.
+ */
+export async function updateDriverBalance(driverId: string, walletBalance: number, totalTrips: number): Promise<void> {
+  const { error } = await supabase
+    .from('drivers')
+    .update({ wallet_balance: walletBalance, total_trips: totalTrips })
+    .eq('id', driverId);
+  if (error) throw error;
+}
+
 export async function registerRider(rider: Rider): Promise<void> {
   return upsertRider(rider);
 }

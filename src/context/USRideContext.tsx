@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import {
   fetchAllRiders, fetchAllDrivers, fetchAllVehicles, fetchAllTrips, fetchAllTransactions, fetchAllIncidents,
   upsertRider, upsertDriver, upsertVehicle, insertTrip, updateTripStatus, insertTransaction, insertIncident,
+  updateRiderBalance, updateDriverBalance,
   deleteAllUserData,
   dbToRider, dbToDriver, dbToKeke, dbToTrip, dbToTransaction, dbToIncident
 } from '../lib/db';
@@ -1038,7 +1039,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const transferFee = trip.transferFee || 20;
     const totalCharged = trip.totalFare + transferFee;
 
-    // Debit riders — update riders array; currentRider syncs automatically via useEffect
+    // Debit riders — update local state immediately, then persist balance to Supabase
     const updatedRiders: Rider[] = [];
     setRiders(prev => prev.map(r => {
       if (trip.riderIds.includes(r.id)) {
@@ -1052,8 +1053,19 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       return r;
     }));
-    // Persist each debited rider to Supabase → Realtime updates their tab
-    updatedRiders.forEach(r => upsertRider(r).catch(console.error));
+
+    // Immediately update currentRider if they are one of the deducted riders
+    // (don't wait for Realtime — this makes the wallet card update instantly)
+    if (currentRider && trip.riderIds.includes(currentRider.id)) {
+      setCurrentRider(prev => prev ? {
+        ...prev,
+        walletBalance: Math.max(0, prev.walletBalance - totalCharged),
+        totalTrips: prev.totalTrips + 1
+      } : prev);
+    }
+
+    // Persist only balance + totalTrips to Supabase (avoids saved_cards re-write)
+    updatedRiders.forEach(r => updateRiderBalance(r.id, r.walletBalance, r.totalTrips).catch(console.error));
 
     // Log & persist rider debit transactions
     trip.riderIds.forEach((rId, idx) => {
@@ -1071,8 +1083,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       insertTransaction(riderTx).catch(console.error);
     });
 
-    // Credit driver — setCurrentDriver synced via Realtime rider channel update
+    // Credit driver — update local state immediately + persist balance only
     if (trip.driverId) {
+      let creditedDriver: typeof drivers[0] | null = null;
       setDrivers(prev => prev.map(d => {
         if (d.id === trip.driverId) {
           const updated = {
@@ -1080,11 +1093,23 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             walletBalance: d.walletBalance + fare,
             totalTrips: d.totalTrips + 1
           };
-          upsertDriver(updated).catch(console.error);
+          creditedDriver = updated;
           return updated;
         }
         return d;
       }));
+
+      // Immediately update currentDriver if it's the same driver
+      if (currentDriver && currentDriver.id === trip.driverId && creditedDriver) {
+        setCurrentDriver(prev => prev ? {
+          ...prev,
+          walletBalance: prev.walletBalance + fare,
+          totalTrips: prev.totalTrips + 1
+        } : prev);
+      }
+
+      // Persist balance only (no heavy upsertDriver)
+      updateDriverBalance(trip.driverId, (currentDriver?.walletBalance || 0) + fare, (currentDriver?.totalTrips || 0) + 1).catch(console.error);
 
       // Log Driver credit
       const driverTx: WalletTransaction = {
