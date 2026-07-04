@@ -878,15 +878,19 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Top Up Rider Wallet
   const riderTopUpWallet = (amount: number) => {
     if (!currentRider) return;
-    
+
+    const newBalance = currentRider.walletBalance + amount;
+
+    // Update local state list
     setRiders(prev => prev.map(r => {
       if (r.id === currentRider.id) {
-        const updated = { ...r, walletBalance: r.walletBalance + amount };
-        setCurrentRider(updated);
-        return updated;
+        return { ...r, walletBalance: newBalance };
       }
       return r;
     }));
+
+    // Immediately update currentRider context
+    setCurrentRider(prev => prev ? { ...prev, walletBalance: newBalance } : null);
 
     // Log transaction
     const newTx: WalletTransaction = {
@@ -901,9 +905,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setTransactions(prev => [newTx, ...prev]);
     insertTransaction(newTx).catch(console.error);
-    // Persist updated rider to Supabase
-    const updatedRider = { ...currentRider, walletBalance: currentRider.walletBalance + amount };
-    upsertRider(updatedRider).catch(console.error);
+
+    // Persist updated balance directly to database
+    updateRiderBalance(currentRider.id, newBalance, currentRider.totalTrips).catch(console.error);
   };
 
   const addRiderCard = (card: Omit<SavedCard, 'id'>) => {

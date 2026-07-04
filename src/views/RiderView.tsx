@@ -283,9 +283,9 @@ export const RiderView: React.FC = () => {
       },
       callback: (response: { reference: string }) => {
         // Payment was completed on Paystack's side.
-        // The webhook (Edge Function) will credit the wallet in the DB.
-        // Supabase Realtime will broadcast the new balance to this tab automatically.
+        // Update balance locally and database synchronously (makes it work immediately even without webhook)
         console.log('[Paystack] Payment successful, reference:', response.reference);
+        riderTopUpWallet(amt);
         setIsProcessingTopup(false);
         synthSound.playCashRegister();
         setTopupSuccess(true);
