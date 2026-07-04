@@ -1039,33 +1039,32 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const transferFee = trip.transferFee || 20;
     const totalCharged = trip.totalFare + transferFee;
 
-    // Debit riders — update local state immediately, then persist balance to Supabase
-    const updatedRiders: Rider[] = [];
+    // Debit riders — calculate updates synchronously first
+    const ridersToUpdate = riders.filter(r => trip.riderIds.includes(r.id));
+    const updatedRidersList = ridersToUpdate.map(r => ({
+      ...r,
+      walletBalance: Math.max(0, r.walletBalance - totalCharged),
+      totalTrips: r.totalTrips + 1
+    }));
+
+    // Update local state list
     setRiders(prev => prev.map(r => {
-      if (trip.riderIds.includes(r.id)) {
-        const updated = {
-          ...r,
-          walletBalance: Math.max(0, r.walletBalance - totalCharged),
-          totalTrips: r.totalTrips + 1
-        };
-        updatedRiders.push(updated);
-        return updated;
-      }
-      return r;
+      const match = updatedRidersList.find(u => u.id === r.id);
+      return match ? match : r;
     }));
 
     // Immediately update currentRider if they are one of the deducted riders
-    // (don't wait for Realtime — this makes the wallet card update instantly)
     if (currentRider && trip.riderIds.includes(currentRider.id)) {
-      setCurrentRider(prev => prev ? {
-        ...prev,
-        walletBalance: Math.max(0, prev.walletBalance - totalCharged),
-        totalTrips: prev.totalTrips + 1
-      } : prev);
+      const match = updatedRidersList.find(u => u.id === currentRider.id);
+      if (match) {
+        setCurrentRider(match);
+      }
     }
 
     // Persist only balance + totalTrips to Supabase (avoids saved_cards re-write)
-    updatedRiders.forEach(r => updateRiderBalance(r.id, r.walletBalance, r.totalTrips).catch(console.error));
+    updatedRidersList.forEach(r => {
+      updateRiderBalance(r.id, r.walletBalance, r.totalTrips).catch(console.error);
+    });
 
     // Log & persist rider debit transactions
     trip.riderIds.forEach((rId, idx) => {
@@ -1083,33 +1082,27 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       insertTransaction(riderTx).catch(console.error);
     });
 
-    // Credit driver — update local state immediately + persist balance only
+    // Credit driver — calculate updates synchronously first
     if (trip.driverId) {
-      let creditedDriver: typeof drivers[0] | null = null;
-      setDrivers(prev => prev.map(d => {
-        if (d.id === trip.driverId) {
-          const updated = {
-            ...d,
-            walletBalance: d.walletBalance + fare,
-            totalTrips: d.totalTrips + 1
-          };
-          creditedDriver = updated;
-          return updated;
+      const driverToUpdate = drivers.find(d => d.id === trip.driverId);
+      if (driverToUpdate) {
+        const updatedDriver = {
+          ...driverToUpdate,
+          walletBalance: driverToUpdate.walletBalance + fare,
+          totalTrips: driverToUpdate.totalTrips + 1
+        };
+
+        // Update local drivers state list
+        setDrivers(prev => prev.map(d => d.id === trip.driverId ? updatedDriver : d));
+
+        // Immediately update currentDriver if it's the same driver
+        if (currentDriver && currentDriver.id === trip.driverId) {
+          setCurrentDriver(updatedDriver);
         }
-        return d;
-      }));
 
-      // Immediately update currentDriver if it's the same driver
-      if (currentDriver && currentDriver.id === trip.driverId && creditedDriver) {
-        setCurrentDriver(prev => prev ? {
-          ...prev,
-          walletBalance: prev.walletBalance + fare,
-          totalTrips: prev.totalTrips + 1
-        } : prev);
+        // Persist balance only
+        updateDriverBalance(updatedDriver.id, updatedDriver.walletBalance, updatedDriver.totalTrips).catch(console.error);
       }
-
-      // Persist balance only (no heavy upsertDriver)
-      updateDriverBalance(trip.driverId, (currentDriver?.walletBalance || 0) + fare, (currentDriver?.totalTrips || 0) + 1).catch(console.error);
 
       // Log Driver credit
       const driverTx: WalletTransaction = {
