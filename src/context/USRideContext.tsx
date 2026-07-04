@@ -735,38 +735,55 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   };
 
-  // Withdraw Driver Earnings
-  const withdrawEarnings = async (amount: number, bankName: string, accountNumber: string) => {
+  // Withdraw Driver Earnings via secure Paystack Transfer Edge Function
+  const withdrawEarnings = async (amount: number, bankCode: string, accountNumber: string): Promise<boolean> => {
     if (!currentDriver) return false;
     if (currentDriver.walletBalance < amount) return false;
 
-    // Deduct driver wallet balance
-    setDrivers(prev => prev.map(d => {
-      if (d.id === currentDriver.id) {
-        const updated = { ...d, walletBalance: d.walletBalance - amount };
-        // Sync local currentDriver storage state
-        setCurrentDriver(updated);
-        return updated;
-      }
-      return d;
-    }));
+    try {
+      const { data, error } = await supabase.functions.invoke('paystack-payout', {
+        body: {
+          driverId: currentDriver.id,
+          bankCode,
+          accountNumber,
+          amount
+        }
+      });
 
-    // Log transaction
-    const newTx: WalletTransaction = {
-      id: `tx-${Date.now()}`,
-      userId: currentDriver.id,
-      userType: 'driver',
-      type: 'withdrawal',
-      amount,
-      reference: `PAYSTACK-${Math.floor(Math.random() * 10000000)}`,
-      description: `Withdrawal to ${bankName} (${accountNumber})`,
-      createdAt: new Date().toISOString()
-    };
-    setTransactions(prev => [newTx, ...prev]);
-    insertTransaction(newTx).catch(console.error);
-    const updatedDriver = { ...currentDriver, walletBalance: currentDriver.walletBalance - amount };
-    upsertDriver(updatedDriver).catch(console.error);
-    return true;
+      if (error || !data || !data.success) {
+        console.error('[Payout] Payout failed:', error || data);
+        showModal({
+          title: "Payout Failed",
+          message: error?.message || data?.error || "Paystack transfer failed. Please verify your bank details.",
+          type: 'error'
+        });
+        return false;
+      }
+
+      // Calculate new balance
+      const newBalance = currentDriver.walletBalance - amount;
+
+      // Update local drivers state list
+      setDrivers(prev => prev.map(d => {
+        if (d.id === currentDriver.id) {
+          return { ...d, walletBalance: newBalance };
+        }
+        return d;
+      }));
+
+      // Immediately update currentDriver context
+      setCurrentDriver(prev => prev ? { ...prev, walletBalance: newBalance } : null);
+
+      return true;
+    } catch (err) {
+      console.error('[Payout] Connection error:', err);
+      showModal({
+        title: "Connection Error",
+        message: "Failed to connect to payout server. Check your connection.",
+        type: 'error'
+      });
+      return false;
+    }
   };
 
   // 4. Rider Booking Flow

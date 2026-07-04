@@ -10,6 +10,28 @@ import {
   Eye, EyeOff
 } from 'lucide-react';
 
+const NIGERIAN_BANKS = [
+  { code: '044', name: 'Access Bank' },
+  { code: '058', name: 'Guaranty Trust Bank (GTB)' },
+  { code: '057', name: 'Zenith Bank' },
+  { code: '033', name: 'United Bank for Africa (UBA)' },
+  { code: '011', name: 'First Bank' },
+  { code: '50211', name: 'Kuda Bank' },
+  { code: '999992', name: 'OPay' },
+  { code: '999991', name: 'PalmPay' },
+  { code: '035', name: 'Wema Bank' },
+  { code: '050', name: 'Ecobank' },
+  { code: '070', name: 'Fidelity Bank' },
+  { code: '214', name: 'FCMB' },
+  { code: '030', name: 'Heritage Bank' },
+  { code: '221', name: 'Stanbic IBTC' },
+  { code: '068', name: 'Standard Chartered' },
+  { code: '232', name: 'Sterling Bank' },
+  { code: '100', name: 'Suntrust Bank' },
+  { code: '032', name: 'Union Bank' },
+  { code: '215', name: 'Unity Bank' },
+];
+
 export const DriverView: React.FC = () => {
   const {
     riders,
@@ -43,7 +65,7 @@ export const DriverView: React.FC = () => {
   const [editPhoto, setEditPhoto] = useState('');
   
   // Withdrawal states
-  const [bankName, setBankName] = useState('Access Bank');
+  const [bankCode, setBankCode] = useState('044');
   const [accountNumber, setAccountNumber] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
@@ -205,27 +227,20 @@ export const DriverView: React.FC = () => {
     if (isNaN(amt) || amt <= 0 || !accountNumber) return;
 
     setIsWithdrawing(true);
-    // Simulate Paystack Transfer API delay
-    setTimeout(async () => {
-      const success = await withdrawEarnings(amt, bankName, accountNumber);
-      setIsWithdrawing(false);
-      if (success) {
-        synthSound.playCashRegister();
-        setWithdrawSuccess(true);
-        setWithdrawAmount('');
-        setAccountNumber('');
-        setTimeout(() => {
-          setWithdrawSuccess(false);
-          setDriverStep('idle');
-        }, 1500);
-      } else {
-        showModal({
-          title: "Withdrawal Failed",
-          message: "Withdrawal failed. Check your earnings balance!",
-          type: 'error'
-        });
-      }
-    }, 1500);
+    // Execute real secure Paystack Transfer payout via Edge Function
+    const success = await withdrawEarnings(amt, bankCode, accountNumber);
+    setIsWithdrawing(false);
+    
+    if (success) {
+      synthSound.playCashRegister();
+      setWithdrawSuccess(true);
+      setWithdrawAmount('');
+      setAccountNumber('');
+      setTimeout(() => {
+        setWithdrawSuccess(false);
+        setDriverStep('idle');
+      }, 2500);
+    }
   };
 
   // Render Auth screen
@@ -697,14 +712,14 @@ export const DriverView: React.FC = () => {
                 <select 
                   className="landmark-select-item" 
                   style={{ width: '100%', border: '1px solid #cbd5e1', marginTop: '4px', height: '40px' }}
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
+                  value={bankCode}
+                  onChange={(e) => setBankCode(e.target.value)}
                 >
-                  <option value="Access Bank">Access Bank</option>
-                  <option value="GTBank">Guaranty Trust Bank (GTB)</option>
-                  <option value="Zenith Bank">Zenith Bank</option>
-                  <option value="UBA">United Bank for Africa (UBA)</option>
-                  <option value="First Bank">First Bank</option>
+                  {NIGERIAN_BANKS.map(bank => (
+                    <option key={bank.code} value={bank.code}>
+                      {bank.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
