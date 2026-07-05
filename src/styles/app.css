@@ -205,8 +205,9 @@ body {
 }
 
 /* ── PRODUCTION RESPONSIVE SHELL ───────────────────────────────────────────
-   On real mobile devices  → fills the full screen naturally
-   On desktop/tablet       → centred card, max 430px wide
+   Mobile  (< 768px)  → fills the full screen naturally, like a native app
+   Tablet  (768-1199) → fills full width, no phone frame
+   Desktop (≥ 1200px) → fills full width, no phone frame
    ──────────────────────────────────────────────────────────────────────── */
 .phone-screen {
   display: flex;
@@ -216,28 +217,21 @@ body {
   overflow: hidden;
   position: relative;
 
-  /* Mobile-first: fill the whole viewport */
+  /* Always fill the full viewport — no phone-frame constraint */
   width: 100vw;
-  height: 100dvh;          /* dynamic viewport height — handles mobile chrome bars */
-  min-height: 100vh;       /* fallback */
+  height: 100dvh;
+  min-height: 100vh;
 }
 
-/* On screens wider than 500px, centre the app like a phone if active */
-@media (min-width: 500px) {
-  body:has(.phone-screen) {
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    background-color: #ede9fe;
-    min-height: 100vh;
-  }
-
-  .phone-screen {
-    width: 430px;
-    height: 100vh;
-    border-radius: 0;
-    box-shadow: 0 0 60px rgba(91, 33, 182, 0.25);
-  }
+/* Reset body so it never collapses to a centred narrow column */
+body:has(.phone-screen),
+html:has(.phone-screen),
+#root:has(.phone-screen) {
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  display: block !important;
+  background-color: #f8f7ff !important;
 }
 
 /* Smartphone Top bar — now uses UNIBEN purple */

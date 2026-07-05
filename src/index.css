@@ -5,12 +5,15 @@ html, body, #root {
   width: 100% !important;
   height: 100% !important;
   display: block !important;
+  background-color: #f8f7ff !important;
 }
 
-/* Constrain scrolling ONLY when the mobile phone screen app is active */
-body:has(.phone-screen), html:has(.phone-screen), #root:has(.phone-screen) {
+/* When the phone-screen app is active, fill the entire viewport */
+body:has(.phone-screen),
+html:has(.phone-screen),
+#root:has(.phone-screen) {
   overflow: hidden !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  max-width: 100vw !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
 }
