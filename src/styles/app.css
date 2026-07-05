@@ -749,3 +749,36 @@ html:has(.phone-screen),
   to   { transform: rotate(360deg); }
 }
 
+/* ─── Responsive Admin Dashboard on Mobile Screens ───────────────────────── */
+@media (max-width: 768px) {
+  .admin-shell {
+    padding: 16px !important;
+  }
+
+  .admin-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 15px !important;
+  }
+
+  .admin-header-actions {
+    width: 100% !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .simulator-controls {
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .sim-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 10px !important;
+  }
+}
+
+

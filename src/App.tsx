@@ -26,7 +26,10 @@ const MainAppContent: React.FC = () => {
 
   // ── Admin Portal (hidden — only accessible via logo tap) ────────────────
   if (activeView === 'admin' || screen === 'admin') {
-    return <AdminView />;
+    return <AdminView onExit={() => {
+      setActiveView('rider');
+      setScreen('landing');
+    }} />;
   }
 
   // ── Auth Screens ────────────────────────────────────────────────────────

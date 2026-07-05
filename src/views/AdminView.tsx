@@ -3,10 +3,14 @@ import { useUSRide, LANDMARKS, Driver, Keke, Landmark } from '../context/USRideC
 import { UnibenMap } from '../components/UnibenMap';
 import { 
   Users, MapPin, Zap, BarChart2, ShieldCheck, Plus, Trash2, 
-  Battery, Play, Info, Check, LogIn, ShieldAlert, CreditCard
+  Battery, Play, Info, Check, LogIn, ShieldAlert, CreditCard, LogOut
 } from 'lucide-react';
 
-export const AdminView: React.FC = () => {
+interface AdminViewProps {
+  onExit: () => void;
+}
+
+export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
   const {
     riders,
     drivers,
@@ -19,8 +23,8 @@ export const AdminView: React.FC = () => {
     resetSimulatorDatabase
   } = useUSRide();
 
-  // Authentication
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(true);
+  // Authentication — defaults to false to request password
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
 
   // Sub-tabs
@@ -146,6 +150,15 @@ export const AdminView: React.FC = () => {
           <button className="primary-btn" type="submit">
             <LogIn size={16} /> Sign In as Admin
           </button>
+
+          <button 
+            className="secondary-btn" 
+            type="button" 
+            onClick={onExit} 
+            style={{ width: '100%', padding: '12px', background: 'transparent', border: '1px solid #475569', color: '#94a3b8', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 'bold' }}
+          >
+            Cancel &amp; Go Back
+          </button>
         </form>
       </div>
     );
@@ -154,7 +167,7 @@ export const AdminView: React.FC = () => {
   return (
     <div className="admin-shell">
       {/* Tab controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '15px', marginBottom: '25px' }}>
+      <div className="admin-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '15px', marginBottom: '25px' }}>
         <div>
           <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ShieldCheck style={{ color: 'var(--uniben-gold)' }} />
@@ -163,7 +176,7 @@ export const AdminView: React.FC = () => {
           <span style={{ fontSize: '11px', color: '#64748b' }}>University of Benin Smart Solar Fleet Management</span>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="admin-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div className="simulator-controls">
             <button 
               className={`sim-btn ${adminTab === 'fleet' ? 'active' : ''}`}
@@ -214,6 +227,27 @@ export const AdminView: React.FC = () => {
             title="Reset all simulator data to defaults"
           >
             <Trash2 size={13} /> Reset Database
+          </button>
+
+          <button
+            onClick={onExit}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.15)',
+              backgroundColor: 'rgba(255,255,255,0.06)',
+              color: '#cbd5e1',
+              fontSize: '11px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              transition: 'all 0.2s'
+            }}
+            title="Return to user landing page"
+          >
+            <LogOut size={13} /> Exit Admin
           </button>
         </div>
       </div>
@@ -390,7 +424,7 @@ export const AdminView: React.FC = () => {
           </div>
 
           {/* Driver List */}
-          <div className="admin-card" style={{ flex: 2, minWidth: '450px' }}>
+          <div className="admin-card" style={{ flex: 2, minWidth: '280px' }}>
             <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '15px' }}>
               Drivers Registry
             </h3>
