@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 const NIGERIAN_BANKS = [
+  { code: '001', name: 'Paystack Test Bank (Use for Sandbox testing)' },
   { code: '044', name: 'Access Bank' },
   { code: '058', name: 'Guaranty Trust Bank (GTB)' },
   { code: '057', name: 'Zenith Bank' },
@@ -65,7 +66,7 @@ export const DriverView: React.FC = () => {
   const [editPhoto, setEditPhoto] = useState('');
   
   // Withdrawal states
-  const [bankCode, setBankCode] = useState('044');
+  const [bankCode, setBankCode] = useState('001');
   const [accountNumber, setAccountNumber] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
