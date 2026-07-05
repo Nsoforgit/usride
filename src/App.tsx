@@ -16,20 +16,12 @@ const MainAppContent: React.FC = () => {
 
   // ── Logged-in as Rider ──────────────────────────────────────────────────
   if (currentRider) {
-    return (
-      <div className="phone-screen">
-        <RiderView />
-      </div>
-    );
+    return <RiderView />;
   }
 
   // ── Logged-in as Driver ─────────────────────────────────────────────────
   if (currentDriver) {
-    return (
-      <div className="phone-screen">
-        <DriverView />
-      </div>
-    );
+    return <DriverView />;
   }
 
   // ── Admin Portal (hidden — only accessible via logo tap) ────────────────

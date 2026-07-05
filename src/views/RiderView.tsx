@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useUSRide, LANDMARKS, Keke, Trip, Landmark } from '../context/USRideContext';
 import { UnibenMap } from '../components/UnibenMap';
-import { calculateETA, snapCoordinatesToNearestLandmark } from '../utils/geofence';
+import { calculateETA, snapCoordinatesToNearestLandmark, getDistanceMeters } from '../utils/geofence';
 import { synthSound } from '../utils/audio';
 import { 
   Wallet, MapPin, Navigation, User, LogOut, ArrowRight, ShieldAlert,
@@ -188,23 +188,44 @@ export const RiderView: React.FC = () => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
+          const campusCenterLat = 6.4020;
+          const campusCenterLng = 5.6180;
+
+          // Calculate distance to campus center to verify if they are actually on campus
+          // (prevents ISP desktop geolocation tower snapping them to a random campus edge)
+          const distToCampus = getDistanceMeters(latitude, longitude, campusCenterLat, campusCenterLng);
+
+          if (distToCampus > 2500) {
+            showModal({
+              title: "GPS Accuracy Warning",
+              message: "Your current coordinates appear to be outside the UNIBEN campus boundary. Please select your pickup landmark manually for accuracy.",
+              type: 'warning'
+            });
+            setIsLocating(false);
+            return;
+          }
+
           const snapped = snapCoordinatesToNearestLandmark(latitude, longitude, LANDMARKS);
           setPickupId(snapped.id);
           setIsLocating(false);
         },
         (error) => {
-          console.warn("Geolocation error, using mock UNIBEN center coordinates", error);
-          const mockLat = 6.4020 + (Math.random() - 0.5) * 0.005;
-          const mockLng = 5.6180 + (Math.random() - 0.5) * 0.005;
-          const snapped = snapCoordinatesToNearestLandmark(mockLat, mockLng, LANDMARKS);
-          setPickupId(snapped.id);
+          console.warn("Geolocation failed or timed out:", error);
+          showModal({
+            title: "Location Services Timeout",
+            message: "We couldn't pinpoint your exact location. Please select your pickup landmark manually from the list.",
+            type: 'warning'
+          });
           setIsLocating(false);
         },
-        { enableHighAccuracy: true, timeout: 5000 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     } else {
-      const snapped = snapCoordinatesToNearestLandmark(6.4025, 5.6210, LANDMARKS);
-      setPickupId(snapped.id);
+      showModal({
+        title: "Geolocation Unsupported",
+        message: "Your browser does not support location services. Please select your landmark manually.",
+        type: 'warning'
+      });
       setIsLocating(false);
     }
   };
