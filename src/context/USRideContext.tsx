@@ -659,6 +659,10 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const found = drivers.find(d => d.driverIdCode.toUpperCase() === driverIdCode.toUpperCase() && d.isActive);
     if (found) {
       setCurrentDriver(found);
+      // Synchronously set their keke to prevent any split-second loading flickers in DriverView
+      const match = kekes.find(k => k.id === found.kekeId);
+      if (match) setCurrentKeke(match);
+
       // Set their keke online
       setKekes(prev => prev.map(k => {
         if (k.id === found.kekeId) {

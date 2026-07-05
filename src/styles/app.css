@@ -781,4 +781,77 @@ html:has(.phone-screen),
   }
 }
 
+/* ─── Responsive Landing Page on Desktop/Tablet (min-width: 768px) ────────── */
+@media (min-width: 768px) {
+  .landing-nav {
+    padding: 20px 48px !important;
+  }
+
+  .landing-hero {
+    padding: 90px 48px 64px !important;
+  }
+
+  .landing-hero-text {
+    max-width: 600px !important;
+    margin: 0 auto 40px !important;
+    font-size: 22px !important;
+  }
+
+  .landing-hero-ctas {
+    flex-direction: row !important;
+    max-width: 600px !important;
+    justify-content: center !important;
+    gap: 16px !important;
+  }
+
+  .landing-hero-ctas button {
+    flex: 1 !important;
+    max-width: 250px !important;
+  }
+
+  .landing-services-section {
+    padding: 60px 48px !important;
+  }
+
+  .landing-services-grid {
+    max-width: 800px !important;
+    gap: 24px !important;
+  }
+
+  .landing-stats {
+    max-width: 800px !important;
+    padding: 40px 48px !important;
+    margin-bottom: 60px !important;
+  }
+
+  .landing-steps-section {
+    max-width: 900px !important;
+    padding: 40px 48px 80px !important;
+  }
+
+  .landing-steps-grid {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: space-between !important;
+    gap: 24px !important;
+  }
+
+  .landing-steps-grid > div {
+    flex: 1 !important;
+    min-width: 200px !important;
+    margin-bottom: 0 !important;
+  }
+
+  .landing-bottom-cta {
+    padding: 80px 48px !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .landing-steps-grid > div {
+    min-width: 180px !important;
+  }
+}
+
+
 

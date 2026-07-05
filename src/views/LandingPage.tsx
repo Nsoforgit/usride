@@ -27,7 +27,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
     }}>
 
       {/* ── NAV ── */}
-      <nav style={{
+      <nav className="landing-nav" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '16px 24px',
         backgroundColor: '#ffffff',
@@ -62,7 +62,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
       </nav>
 
       {/* ── HERO ── */}
-      <section style={{
+      <section className="landing-hero" style={{
         padding: '56px 24px 40px',
         background: 'linear-gradient(160deg, #faf8ff 0%, #f3f0ff 60%, #fffbeb 100%)',
         textAlign: 'center'
@@ -90,7 +90,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
           <span style={{ color: '#5B21B6' }}>Ride</span>
         </h1>
 
-        <p style={{
+        <p className="landing-hero-text" style={{
           fontSize: '18px', color: '#6B7280',
           fontWeight: '500', marginBottom: '40px',
           maxWidth: '320px', margin: '0 auto 40px'
@@ -100,7 +100,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
         </p>
 
         {/* CTA Buttons */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '320px', margin: '0 auto 32px' }}>
+        <div className="landing-hero-ctas" style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '320px', margin: '0 auto 32px' }}>
           <button onClick={onGetRide} style={{
             padding: '18px 32px', borderRadius: '16px',
             background: 'linear-gradient(135deg, #5B21B6, #7C3AED)',
@@ -135,12 +135,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
       </section>
 
       {/* ── SERVICE CARDS ── */}
-      <section style={{ padding: '40px 20px', backgroundColor: '#fff' }}>
+      <section className="landing-services-section" style={{ padding: '40px 20px', backgroundColor: '#fff' }}>
         <p style={{ textAlign: 'center', fontSize: '12px', fontWeight: '700', color: '#9CA3AF', letterSpacing: '1px', marginBottom: '20px', textTransform: 'uppercase' }}>
           Our Services
         </p>
 
-        <div style={{ display: 'flex', gap: '14px', maxWidth: '480px', margin: '0 auto' }}>
+        <div className="landing-services-grid" style={{ display: 'flex', gap: '14px', maxWidth: '480px', margin: '0 auto' }}>
           {/* USRide Card */}
           <div style={{
             flex: 1, borderRadius: '20px', padding: '24px 20px',
@@ -182,7 +182,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
       </section>
 
       {/* ── STATS ── */}
-      <section style={{
+      <section className="landing-stats" style={{
         padding: '32px 24px',
         background: 'linear-gradient(135deg, #5B21B6, #4C1D95)',
         margin: '0 20px 40px', borderRadius: '24px',
@@ -203,32 +203,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section style={{ padding: '20px 24px 48px', maxWidth: '480px', margin: '0 auto' }}>
+      <section className="landing-steps-section" style={{ padding: '20px 24px 48px', maxWidth: '480px', margin: '0 auto' }}>
         <p style={{ textAlign: 'center', fontSize: '12px', fontWeight: '700', color: '#9CA3AF', letterSpacing: '1px', marginBottom: '24px', textTransform: 'uppercase' }}>
           How it works
         </p>
-        {[
-          { icon: '📱', title: 'Create Account', desc: 'Sign up with your UNIBEN email in seconds' },
-          { icon: '📍', title: 'Choose Your Pickup', desc: 'Select from campus landmarks — faculty, hostels, gates' },
-          { icon: '⚡', title: 'Get Matched', desc: 'A nearby Keke or Cab accepts your ride instantly' },
-          { icon: '💳', title: 'Pay via Wallet', desc: 'Top up once, ride multiple times — no cash needed' },
-        ].map((step, i) => (
-          <div key={i} style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', marginBottom: '24px' }}>
-            <div style={{
-              width: '48px', height: '48px', borderRadius: '14px', flexShrink: 0,
-              backgroundColor: '#F3F0FF', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '22px'
-            }}>{step.icon}</div>
-            <div>
-              <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e1040', marginBottom: '3px' }}>{step.title}</div>
-              <div style={{ fontSize: '13px', color: '#6B7280' }}>{step.desc}</div>
+        <div className="landing-steps-grid" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {[
+            { icon: '📱', title: 'Create Account', desc: 'Sign up with your UNIBEN email in seconds' },
+            { icon: '📍', title: 'Choose Your Pickup', desc: 'Select from campus landmarks — faculty, hostels, gates' },
+            { icon: '⚡', title: 'Get Matched', desc: 'A nearby Keke or Cab accepts your ride instantly' },
+            { icon: '💳', title: 'Pay via Wallet', desc: 'Top up once, ride multiple times — no cash needed' },
+          ].map((step, i) => (
+            <div key={i} style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', marginBottom: '24px' }}>
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '14px', flexShrink: 0,
+                backgroundColor: '#F3F0FF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '22px'
+              }}>{step.icon}</div>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e1040', marginBottom: '3px' }}>{step.title}</div>
+                <div style={{ fontSize: '13px', color: '#6B7280' }}>{step.desc}</div>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </section>
 
       {/* ── BOTTOM CTA ── */}
-      <section style={{
+      <section className="landing-bottom-cta" style={{
         padding: '40px 24px',
         background: 'linear-gradient(160deg, #faf8ff, #f3f0ff)',
         textAlign: 'center'
