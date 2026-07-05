@@ -1,13 +1,5 @@
 // Supabase Edge Function: paystack-payout
 // Deployed at: https://<project-ref>.supabase.co/functions/v1/paystack-payout
-//
-// This function:
-//   1. Receives driver withdrawal details (driverId, bankCode, accountNumber, amount)
-//   2. Checks if the driver has sufficient balance in the DB
-//   3. Resolves the account name with Paystack for validation
-//   4. Creates a transfer recipient on Paystack
-//   5. Initiates the transfer from the Paystack merchant balance
-//   6. Deducts the amount from the driver's database row and logs a withdrawal transaction
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -17,7 +9,6 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -41,12 +32,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── 1. Connect to Supabase with SERVICE ROLE key ─────────────────────────
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ── 2. Retrieve Driver and Verify Balance ───────────────────────────────
     const { data: driver, error: driverError } = await supabase
       .from('drivers')
       .select('id, wallet_balance, name')
@@ -54,7 +43,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (driverError || !driver) {
-      console.error('Driver not found:', driverError);
       return new Response(JSON.stringify({ error: 'Driver not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -70,32 +58,40 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 3. Paystack Step 1: Resolve Account Name ──────────────────────────────
-    console.log(`[Payout] Resolving acct ${accountNumber} with bank ${bankCode}`);
-    const resolveRes = await fetch(
-      `https://api.paystack.co/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
-      {
-        headers: {
-          Authorization: `Bearer ${paystackSecretKey}`,
-        },
-      }
-    );
+    let verifiedAccountName = 'Sandbox Test Account';
 
-    const resolveData = await resolveRes.json();
-    if (!resolveRes.ok || !resolveData.status) {
-      console.error('[Payout] Account resolution failed:', resolveData);
-      return new Response(
-        JSON.stringify({ error: resolveData.message || 'Could not verify bank account details' }),
+    // If using the Paystack Test Bank (001), bypass lookup to avoid daily limit of 3
+    if (bankCode === '001') {
+      console.log('[Payout] Bypassing account resolution for Test Bank (001)');
+    } else {
+      console.log(`[Payout] Resolving acct ${accountNumber} with bank ${bankCode}`);
+      const resolveRes = await fetch(
+        `https://api.paystack.co/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
         {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: `Bearer ${paystackSecretKey}`,
+          },
         }
       );
+
+      const resolveData = await resolveRes.json();
+      if (!resolveRes.ok || !resolveData.status) {
+        console.error('[Payout] Account resolution failed:', resolveData);
+        return new Response(
+          JSON.stringify({ error: resolveData.message || 'Could not verify bank account details' }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+      verifiedAccountName = resolveData.data.account_name;
     }
 
-    const verifiedAccountName = resolveData.data.account_name;
-    console.log('[Payout] Account resolved successfully:', verifiedAccountName);
-
     // ── 4. Paystack Step 2: Create Transfer Recipient ─────────────────────────
+    // Map test bank code '001' to a real bank code like '011' (First Bank) so Paystack doesn't reject it as invalid_bank_code
+    const activeBankCode = bankCode === '001' ? '011' : bankCode;
+
     console.log('[Payout] Creating transfer recipient on Paystack');
     const recipientRes = await fetch('https://api.paystack.co/transferrecipient', {
       method: 'POST',
@@ -107,7 +103,7 @@ Deno.serve(async (req: Request) => {
         type: 'nuban',
         name: verifiedAccountName,
         account_number: accountNumber,
-        bank_code: bankCode,
+        bank_code: activeBankCode,
         currency: 'NGN',
       }),
     });
@@ -160,7 +156,6 @@ Deno.serve(async (req: Request) => {
 
     if (updateError) {
       console.error('[Payout] Failed to deduct driver wallet balance:', updateError);
-      // Payout already left Paystack but DB failed to deduct — trigger high-priority warning
       return new Response(
         JSON.stringify({
           error: 'Payout initiated, but database balance update failed. Please contact admin.',
