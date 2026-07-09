@@ -1,0 +1,24 @@
+{
+  "name": "USRide - UNIBEN Campus Rides",
+  "short_name": "USRide",
+  "description": "The smartest way to get around UNIBEN campus",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0a2e",
+  "theme_color": "#5B21B6",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
