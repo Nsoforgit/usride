@@ -4,6 +4,7 @@ import { UnibenMap } from '../components/UnibenMap';
 import { LocationPickerModal } from '../components/LocationPickerModal';
 import { calculateETA, snapCoordinatesToNearestLandmark, getDistanceMeters } from '../utils/geofence';
 import { synthSound } from '../utils/audio';
+import { useUserLocation } from '../hooks/useUserLocation';
 import { 
   Wallet, MapPin, Navigation, User, LogOut, ArrowRight, ShieldAlert,
   Star, CreditCard, RefreshCw, X, CheckCircle, Clock, Battery, Trash2, History,
@@ -31,6 +32,9 @@ export const RiderView: React.FC = () => {
     showModal,
     updateRiderProfile
   } = useUSRide();
+
+  // Live GPS location tracking
+  const userLocation = useUserLocation();
 
   // Screen states
   const [emailInput, setEmailInput] = useState('');
@@ -1041,6 +1045,30 @@ export const RiderView: React.FC = () => {
                       <div style={{ fontSize: '24px', fontWeight: '800', margin: '4px 0' }}>₦{currentRider.walletBalance.toLocaleString()}</div>
                       <div style={{ fontSize: '9px', opacity: 0.8 }}>Tap to top up / manage cards ➔</div>
                     </div>
+
+                    {/* Live GPS Location Pill */}
+                    {userLocation.nearestLandmark && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 10px',
+                        backgroundColor: '#eff6ff',
+                        borderRadius: '8px',
+                        border: '1px solid #bfdbfe',
+                        fontSize: '11px',
+                        color: '#1e40af',
+                        fontWeight: '600'
+                      }}>
+                        <MapPin size={12} />
+                        📍 Near {userLocation.nearestLandmark.name}
+                        {userLocation.distanceToLandmark !== null && (
+                          <span style={{ fontWeight: '400', color: '#60a5fa', marginLeft: '4px' }}>
+                            ({userLocation.distanceToLandmark}m)
+                          </span>
+                        )}
+                      </div>
+                    )}
                     
                     <button className="primary-btn" style={{ width: '100%', marginTop: '4px' }} onClick={startBooking}>
                       <Navigation size={16} /> Book Uniben Smart Ride

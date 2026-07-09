@@ -3,6 +3,7 @@ import { useUSRide, Keke, Trip, LANDMARKS } from '../context/USRideContext';
 import { UnibenMap } from '../components/UnibenMap';
 import { calculateETA, getDistanceMeters } from '../utils/geofence';
 import { synthSound } from '../utils/audio';
+import { useUserLocation } from '../hooks/useUserLocation';
 import { 
   ToggleLeft, ToggleRight, Battery, User, LogOut, ArrowRight, 
   MapPin, CheckCircle, Navigation, DollarSign, Wallet, ArrowUpRight,
@@ -55,6 +56,9 @@ export const DriverView: React.FC = () => {
     showModal,
     updateDriverProfile
   } = useUSRide();
+
+  // Live GPS location tracking
+  const userLocation = useUserLocation();
 
   // Login states
   const [driverIdInput, setDriverIdInput] = useState('');
@@ -137,11 +141,13 @@ export const DriverView: React.FC = () => {
       return;
     }
 
-    // Find requested trip matching driver's vehicle type and brand
+    // Find requested trip matching driver's vehicle type AND proximity eligibility
     const pendingRequest = trips.find(t => 
       t.status === 'requested' && 
       t.driverId === null && 
-      t.vehicleType === currentDriver.vehicleType
+      t.vehicleType === currentDriver.vehicleType &&
+      // Proximity check: only show if this driver is in the eligible list (or if no list exists for backwards compat)
+      (!t.eligibleDriverIds || t.eligibleDriverIds.length === 0 || t.eligibleDriverIds.includes(currentDriver.id))
     );
     
     if (pendingRequest) {
@@ -956,6 +962,30 @@ export const DriverView: React.FC = () => {
                       <span>Seats Left: <strong>{currentKeke.currentSeatsAvailable}/{currentKeke.vehicleType === 'keke' ? 5 : 4}</strong></span>
                       <span>Wallet: <strong>₦{currentDriver.walletBalance}</strong></span>
                     </div>
+
+                    {/* Live GPS Location Pill */}
+                    {userLocation.nearestLandmark && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 10px',
+                        backgroundColor: '#f0fdf4',
+                        borderRadius: '8px',
+                        border: '1px solid #bbf7d0',
+                        fontSize: '11px',
+                        color: '#166534',
+                        fontWeight: '600'
+                      }}>
+                        <MapPin size={12} />
+                        📍 Near {userLocation.nearestLandmark.name}
+                        {userLocation.distanceToLandmark !== null && (
+                          <span style={{ fontWeight: '400', color: '#4ade80', marginLeft: '4px' }}>
+                            ({userLocation.distanceToLandmark}m)
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

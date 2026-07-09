@@ -86,6 +86,7 @@ export interface Trip {
   completedAt: string | null;
   routeCoords?: [number, number][];
   seatsBooked: number;
+  eligibleDriverIds?: string[];
 }
 
 export interface Landmark {
@@ -502,14 +503,21 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setDrivers(prev => {
               const exists = prev.some(d => d.id === freshDriver.id);
               if (exists) {
-                return prev.map(d => d.id === freshDriver.id ? freshDriver : d);
+                return prev.map(d => {
+                  if (d.id === freshDriver.id) {
+                    // Preserve local photo if DB returned none
+                    return { ...freshDriver, photo: freshDriver.photo || d.photo };
+                  }
+                  return d;
+                });
               } else {
                 return [...prev, freshDriver];
               }
             });
             setCurrentDriver(prev => {
               if (prev && prev.id === freshDriver.id) {
-                return freshDriver;
+                // Preserve local photo if DB returned none
+                return { ...freshDriver, photo: freshDriver.photo || prev.photo };
               }
               return prev;
             });
@@ -534,14 +542,22 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               const freshRider = dbToRider(payload.new, matched?.savedCards || []);
               const exists = prev.some(r => r.id === freshRider.id);
               if (exists) {
-                return prev.map(r => r.id === freshRider.id ? freshRider : r);
+                return prev.map(r => {
+                  if (r.id === freshRider.id) {
+                    // Preserve local photo if DB returned none
+                    return { ...freshRider, photo: freshRider.photo || r.photo };
+                  }
+                  return r;
+                });
               } else {
                 return [...prev, freshRider];
               }
             });
             setCurrentRider(prev => {
               if (prev && prev.id === payload.new.id) {
-                return dbToRider(payload.new, prev.savedCards || []);
+                const incoming = dbToRider(payload.new, prev.savedCards || []);
+                // Preserve local photo if DB returned none
+                return { ...incoming, photo: incoming.photo || prev.photo };
               }
               return prev;
             });
@@ -822,7 +838,43 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Fetch route from Google Directions API
     const route = await fetchGoogleRoute(pickup.lat, pickup.lng, dest.lat, dest.lng, GOOGLE_MAPS_API_KEY);
 
-    // Create new Trip
+    // ─── Proximity Matching: Find eligible drivers within radius ──────────
+    const onlineVehiclesOfType = kekes.filter(k => k.isOnline && k.vehicleType === vehicleType);
+    const RADIUS_1 = 1000; // 1km primary search radius
+    const RADIUS_2 = 2000; // 2km fallback radius
+
+    // Calculate distances from each online vehicle to pickup
+    const vehicleDistances = onlineVehiclesOfType.map(k => {
+      const dist = getDistanceMeters(k.lat, k.lng, pickup.lat, pickup.lng);
+      return { vehicleId: k.id, driverId: k.driverId, distance: dist };
+    }).filter(v => v.driverId !== null);
+
+    // First try 1km radius, then fallback to 2km
+    let eligibleDriverIds = vehicleDistances
+      .filter(v => v.distance <= RADIUS_1)
+      .map(v => v.driverId as string);
+
+    if (eligibleDriverIds.length === 0) {
+      eligibleDriverIds = vehicleDistances
+        .filter(v => v.distance <= RADIUS_2)
+        .map(v => v.driverId as string);
+    }
+
+    // If still no drivers found within 2km, allow all online drivers of this vehicle type
+    if (eligibleDriverIds.length === 0) {
+      eligibleDriverIds = vehicleDistances.map(v => v.driverId as string);
+    }
+
+    if (eligibleDriverIds.length === 0) {
+      showModal({
+        title: "No Drivers Available",
+        message: "😔 No drivers of the selected vehicle type are currently online. Please try again shortly.",
+        type: 'warning'
+      });
+      return null;
+    }
+
+    // Create new Trip with eligible driver list
     const newTrip: Trip = {
       id: `trip-${Date.now()}`,
       rideType,
@@ -843,8 +895,11 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       createdAt: new Date().toISOString(),
       completedAt: null,
       routeCoords: route,
-      seatsBooked: seats
+      seatsBooked: seats,
+      eligibleDriverIds
     };
+
+    console.log(`[Proximity] Trip ${newTrip.id}: ${eligibleDriverIds.length} eligible driver(s) within range`);
 
     setTrips(prev => [...prev, newTrip]);
     insertTrip(newTrip).catch(console.error);

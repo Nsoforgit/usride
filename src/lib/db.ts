@@ -83,6 +83,7 @@ export function dbToTrip(row: Record<string, unknown>): Trip {
     routeCoords: (row.route_coords as [number, number][] | null) ?? undefined,
     createdAt: row.created_at as string,
     completedAt: (row.completed_at as string | null) ?? null,
+    eligibleDriverIds: (row.eligible_driver_ids as string[] | null) ?? undefined,
   };
 }
 
@@ -272,6 +273,7 @@ export async function insertTrip(trip: Trip): Promise<void> {
     route_coords: trip.routeCoords ?? null,
     created_at: trip.createdAt,
     completed_at: trip.completedAt ?? null,
+    eligible_driver_ids: trip.eligibleDriverIds ?? null,
   });
   if (error) throw error;
 }
