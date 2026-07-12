@@ -1521,10 +1521,6 @@ export const RiderView: React.FC = () => {
         }}
       />
 
-      {/* Phone home bottom line */}
-      <div className="phone-home-indicator">
-        <div className="home-bar"></div>
-      </div>
     </div>
   );
 };

@@ -1076,10 +1076,6 @@ export const DriverView: React.FC = () => {
 
       </div>
 
-      {/* Phone home bottom line */}
-      <div className="phone-home-indicator">
-        <div className="home-bar"></div>
-      </div>
     </div>
   );
 };
