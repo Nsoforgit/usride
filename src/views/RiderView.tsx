@@ -241,7 +241,22 @@ export const RiderView: React.FC = () => {
 
     setIsProcessingTopup(true);
 
-    // Use the real Paystack Inline popup
+    // If a saved card is selected, simulate an instant direct token charge (one-click payment)
+    if (selectedCardId) {
+      setTimeout(() => {
+        riderTopUpWallet(amt);
+        setIsProcessingTopup(false);
+        synthSound.playCashRegister();
+        setTopupSuccess(true);
+        setTimeout(() => {
+          setTopupSuccess(false);
+          setBookingStep('idle');
+        }, 2500);
+      }, 1500);
+      return;
+    }
+
+    // Use the real Paystack Inline popup for new payments
     // PaystackPop is loaded globally from the <script> tag in index.html
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const PaystackPop = (window as any).PaystackPop;
