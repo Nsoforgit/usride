@@ -234,19 +234,18 @@ html:has(.phone-screen),
   background-color: #f8f7ff !important;
 }
 
-/* Smartphone Top bar — now uses UNIBEN purple */
+/* Smartphone Top bar — now uses UNIBEN purple and respects iOS safe areas */
 .phone-status-bar {
-  height: 35px;
-  padding: 0 20px;
+  height: auto;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 20px 12px 20px;
   background: linear-gradient(135deg, var(--uniben-purple-dark), var(--uniben-purple));
   color: #fff;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   z-index: 900;
-  padding-top: 10px;
   flex-shrink: 0;
 }
 
@@ -258,6 +257,7 @@ html:has(.phone-screen),
   overflow-x: hidden;
   position: relative;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Smartphone bottom home bar */
@@ -418,10 +418,18 @@ html:has(.phone-screen),
 
 .map-overlay-bottom {
   position: absolute;
-  bottom: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   left: 12px;
   right: 12px;
   z-index: 10;
+}
+
+/* Bottom Sheet Dynamic Height & Safe scrolling */
+.map-overlay-bottom .glass-panel {
+  max-height: 42dvh;
+  max-height: 42vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Bottom Sheet Sliding Container */

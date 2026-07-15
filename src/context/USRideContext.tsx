@@ -332,6 +332,7 @@ interface USRideContextType {
   updateKekeEnergy: (batteryPercent: number, hoursRemaining: number) => void;
   updateCabFinancials: (petrolCost: number, cashCollected: number) => void;
   withdrawEarnings: (amount: number, bankName: string, accountNumber: string) => Promise<boolean>;
+  updateVehicleLocation: (lat: number, lng: number) => Promise<void>;
   
   // Booking Functions
   bookRide: (rideType: 'shared' | 'drop', vehicleType: 'keke' | 'cab', pickupId: string, destId: string, seatsBooked?: number) => Promise<Trip | null>;
@@ -736,6 +737,24 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       return k;
     }));
+  };
+
+  // Update vehicle position in DB
+  const updateVehicleLocation = async (lat: number, lng: number) => {
+    if (!currentDriver || !currentKeke) return;
+    const updatedKeke: Keke = {
+      ...currentKeke,
+      lat,
+      lng
+    };
+    setCurrentKeke(updatedKeke);
+    setKekes(prev => prev.map(k => k.id === currentKeke.id ? updatedKeke : k));
+    try {
+      await upsertVehicle(updatedKeke);
+      console.log(`[GPS Sync] Updated vehicle ${currentKeke.id} position in database to lat: ${lat}, lng: ${lng}`);
+    } catch (err) {
+      console.error('[GPS Sync] Failed to update vehicle position in database:', err);
+    }
   };
 
   const updateCabFinancials = (petrolCost: number, cashCollected: number) => {
@@ -1571,6 +1590,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updateKekeEnergy,
       updateCabFinancials,
       withdrawEarnings,
+      updateVehicleLocation,
       bookRide,
       cancelRide,
       riderTopUpWallet,

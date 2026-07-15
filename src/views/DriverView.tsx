@@ -54,11 +54,23 @@ export const DriverView: React.FC = () => {
     completeTrip,
     chargeKeke,
     showModal,
-    updateDriverProfile
+    updateDriverProfile,
+    updateVehicleLocation
   } = useUSRide();
 
   // Live GPS location tracking
   const userLocation = useUserLocation();
+
+  // Sync live GPS location to database for accurate proximity matching
+  useEffect(() => {
+    if (!currentDriver || !currentKeke || !userLocation.lat || !userLocation.lng) return;
+
+    const dist = getDistanceMeters(currentKeke.lat, currentKeke.lng, userLocation.lat, userLocation.lng);
+    // Sync if they moved > 5 meters or if coordinates are not set
+    if (dist > 5 || (!currentKeke.lat && !currentKeke.lng)) {
+      updateVehicleLocation(userLocation.lat, userLocation.lng);
+    }
+  }, [userLocation.lat, userLocation.lng, currentDriver, currentKeke, updateVehicleLocation]);
 
   // Login states
   const [driverIdInput, setDriverIdInput] = useState('');
