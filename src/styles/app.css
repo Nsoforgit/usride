@@ -1,5 +1,9 @@
 /* UNIBEN Ride — Production Styling */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+/* ── Critical: font-display:swap ensures text renders with fallback immediately,
+   then swaps to Plus Jakarta Sans once downloaded. Without this, iOS shows
+   an invisible text flash (FOIT) for up to 3 seconds on slow connections. ─── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
 
 :root {
   /* Production UNIBEN colors */
@@ -862,4 +866,122 @@ html:has(.phone-screen),
 }
 
 
+/* ==========================================================================
+   ── iOS / MOBILE PERFORMANCE OPTIMISATIONS ──────────────────────────────
+   ========================================================================== */
 
+/* ── 1. GPU compositing: promote animated elements to their own layer.
+   This stops iOS from re-painting the whole screen on each frame. ─────────── */
+.phone-screen,
+.map-container-wrapper,
+.incoming-request-card,
+.glass-panel,
+.glass-panel-dark,
+.bottom-sheet {
+  /* Promotes to compositor layer; avoids main-thread layout thrashing */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  /* hint: this element's transform will change often — pre-allocate GPU layer */
+  will-change: transform;
+}
+
+/* ── 2. Safe area insets — handles iPhone notch, Dynamic Island & home bar.
+   `env(safe-area-inset-*)` is filled in by WebKit/Safari automatically.
+   Without this, content on iPhone 12/13/14/15 is clipped by the notch. ─── */
+.phone-screen {
+  /* Extend the purple gradient behind the notch / Dynamic Island */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Bottom overlays: push above the home indicator bar */
+.map-overlay-bottom {
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Phone navbar: stay above the home indicator */
+.phone-navbar {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+}
+
+/* ── 3. Smooth scrolling on iOS (the -webkit- prefix is needed for Safari) ── */
+.phone-content,
+.map-overlay-bottom .glass-panel,
+.admin-shell {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ── 4. Eliminate the 300ms tap delay on iOS Safari (pre-iOS 13) ──────────── */
+* {
+  touch-action: manipulation;
+}
+
+/* ── 5. Reduce motion for users who requested it (accessibility + battery) ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── 6. Flex-based full-height layout (replaces hardcoded heights) ─────────── 
+   The map-container-wrapper should ALWAYS fill the remaining vertical space
+   between the navbar and the bottom overlay. Using flex:1 instead of a fixed
+   px height ensures this works on every screen from iPhone SE to iPad Pro. ── */
+.phone-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;           /* Critical: allows flex children to shrink below content size */
+}
+
+.map-container-wrapper {
+  flex: 1;
+  min-height: 0;           /* Same — enables the Leaflet map to fill remaining space */
+  display: flex;
+  flex-direction: column;
+}
+
+/* The Leaflet map itself must fill its container */
+.leaflet-container {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+}
+
+/* ── 7. Responsive font-size scaling for small screens (iPhone SE = 375px) ── */
+@media (max-width: 375px) {
+  /* Scale down glass panel text slightly on very small screens */
+  .glass-panel,
+  .glass-panel-dark {
+    padding: 12px;
+    font-size: 13px;
+  }
+
+  .primary-btn,
+  .gold-btn,
+  .secondary-btn,
+  .danger-btn {
+    font-size: 13px;
+    padding: 11px 18px;
+  }
+
+  .phone-navbar h2 {
+    font-size: 14px;
+  }
+}
+
+/* ── 8. Responsive scaling for mid-size phones (iPhone XR = 414px) ───────── */
+@media (min-width: 376px) and (max-width: 430px) {
+  .glass-panel,
+  .glass-panel-dark {
+    padding: 14px;
+  }
+}

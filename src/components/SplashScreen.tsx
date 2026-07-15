@@ -19,10 +19,8 @@ interface SplashScreenProps {
 }
 
 const LOADING_STEPS = [
-  'Initializing solar grid telemetry...',
-  'Connecting to UNIBEN security hub...',
-  'Optimizing green dispatch routes...',
-  'Syncing battery energy statistics...',
+  'Syncing UNIBEN campus grid...',
+  'Connecting live dispatch...',
   'USRide is ready!'
 ];
 
@@ -33,12 +31,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   useEffect(() => {
     const textInterval = setInterval(() => {
       setStepIndex((prev) => (prev < LOADING_STEPS.length - 1 ? prev + 1 : prev));
-    }, 700);
+    }, 500);
 
-    // Auto-complete splash screen after 3.2s
+    // Auto-complete splash screen after 1.8s (was 3.2s — too slow on iOS)
     const timeout = setTimeout(() => {
       onComplete();
-    }, 3200);
+    }, 1800);
 
     return () => {
       clearInterval(textInterval);
@@ -79,9 +77,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             scale: [0.8, 2.5],
           }}
           transition={{
-            duration: 3,
+            duration: 1.8,
             repeat: Infinity,
-            delay: idx * 1.0,
+            delay: idx * 0.6,
             ease: 'easeOut',
           }}
           style={{
@@ -251,7 +249,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           <motion.div
             initial={{ width: '0%' }}
             animate={{ width: '100%' }}
-            transition={{ duration: 3.0, ease: 'easeInOut' }}
+            transition={{ duration: 1.6, ease: 'easeInOut' }}
             style={{
               height: '100%',
               background: 'linear-gradient(90deg, #5b21b6, #7c3aed, #f59e0b, #10b981)',
