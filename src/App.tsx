@@ -38,6 +38,59 @@ const MainAppContent: React.FC = () => {
   const [screen, setScreen] = useState<AppScreen>('landing');
   const [showSplash, setShowSplash] = useState(true);
 
+  // ── DEBUGGING SCRIPT (EASY TO REMOVE) ──────────────────────────────────────
+  React.useEffect(() => {
+    // 1. Monitor Map Clicks (dynamic delegation since map container loads later)
+    const handleMapClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.leaflet-container')) {
+        alert(`[DEBUG] Map clicked! Target tag: <${target.tagName.toLowerCase()}> class: "${target.className}"`);
+      }
+    };
+    document.addEventListener('click', handleMapClick, true);
+    document.addEventListener('touchstart', handleMapClick, true);
+
+    // 2. Monitor Navbar Changes using MutationObserver
+    let observer: MutationObserver | null = null;
+    const initObserver = () => {
+      const navbar = document.querySelector('.phone-navbar');
+      if (!navbar) {
+        // Retry if navbar is not yet in DOM (e.g. during splash screen)
+        setTimeout(initObserver, 200);
+        return;
+      }
+
+      observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes') {
+            const attrName = mutation.attributeName;
+            const oldValue = mutation.oldValue;
+            const newValue = (mutation.target as HTMLElement).getAttribute(attrName || '');
+            alert(`[DEBUG] Navbar Attribute Changed!\nAttribute: "${attrName}"\nOld Value: "${oldValue}"\nNew Value: "${newValue}"`);
+          }
+        });
+      });
+
+      observer.observe(navbar, {
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ['style', 'class', 'hidden']
+      });
+    };
+
+    initObserver();
+
+    // Clean up observers on unmount
+    return () => {
+      document.removeEventListener('click', handleMapClick, true);
+      document.removeEventListener('touchstart', handleMapClick, true);
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, []);
+  // ───────────────────────────────────────────────────────────────────────────
+
   return (
     <AnimatePresence mode="wait">
       {showSplash ? (
