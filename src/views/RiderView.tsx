@@ -108,7 +108,13 @@ export const RiderView: React.FC = () => {
       if (activeTrip && (trips.find(t => t.id === activeTrip.id)?.status === 'completed')) {
         synthSound.playCashRegister();
         setBookingStep('rating');
-      } else if (bookingStep !== 'wallet' && bookingStep !== 'rating' && bookingStep !== 'history') {
+      } else if (
+        bookingStep !== 'wallet' &&
+        bookingStep !== 'rating' &&
+        bookingStep !== 'history' &&
+        bookingStep !== 'locations' &&
+        bookingStep !== 'ride-type'
+      ) {
         setActiveTrip(null);
         setSelectedKeke(null);
         setBookingStep('idle');
