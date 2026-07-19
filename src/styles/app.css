@@ -218,7 +218,10 @@ body {
   flex-direction: column;
   background-color: #f8f7ff;
   color: #1e1040;
-  overflow: hidden;
+  /* overflow:clip is a true scroll-proof boundary. Unlike overflow:hidden,
+     iOS Safari cannot programmatically scroll a clip container via focus
+     events — this prevents Leaflet focus from pushing the navbar off-screen. */
+  overflow: clip;
   position: relative;
 
   /* Always fill the full viewport — no phone-frame constraint */
@@ -233,7 +236,7 @@ html:has(.phone-screen),
 #root:has(.phone-screen) {
   width: 100% !important;
   height: 100% !important;
-  overflow: hidden !important;
+  overflow: clip !important;
   display: block !important;
   background-color: #f8f7ff !important;
 }
