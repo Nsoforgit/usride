@@ -158,7 +158,8 @@ export const DriverView: React.FC = () => {
       t.status === 'requested' && 
       t.driverId === null && 
       t.vehicleType === currentDriver.vehicleType &&
-      // Proximity check: only show if this driver is in the eligible list (or if no list exists for backwards compat)
+      // Proximity & decline check: only show if this driver is in eligible list AND hasn't declined
+      (!t.declinedDriverIds || !t.declinedDriverIds.includes(currentDriver.id)) &&
       (!t.eligibleDriverIds || t.eligibleDriverIds.length === 0 || t.eligibleDriverIds.includes(currentDriver.id))
     );
     

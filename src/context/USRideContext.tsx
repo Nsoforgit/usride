@@ -87,6 +87,8 @@ export interface Trip {
   routeCoords?: [number, number][];
   seatsBooked: number;
   eligibleDriverIds?: string[];
+  declinedDriverIds?: string[];
+  currentRadiusMeters?: number;
 }
 
 export interface Landmark {
@@ -641,6 +643,54 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [riders]);
 
+  // Periodic radial expansion timer for active requested trips (1km -> 2km -> 3km -> 4km -> 5km -> 6km -> Global)
+  useEffect(() => {
+    const requestedTrips = trips.filter(t => t.status === 'requested');
+    if (requestedTrips.length === 0) return;
+
+    const interval = setInterval(() => {
+      setTrips(prev => prev.map(t => {
+        if (t.status !== 'requested') return t;
+
+        const onlineVehicles = kekes.filter(k => k.isOnline && k.vehicleType === t.vehicleType);
+        const vehicleDistances = onlineVehicles.map(k => {
+          const dist = getDistanceMeters(k.lat, k.lng, t.pickupLocation.lat, t.pickupLocation.lng);
+          const driverId = k.driverId || drivers.find(d => d.kekeId === k.id)?.id || null;
+          return { driverId, distance: dist };
+        }).filter((v): v is { driverId: string; distance: number } => v.driverId !== null);
+
+        const currentEligible = new Set(t.eligibleDriverIds || []);
+        const currentRadius = t.currentRadiusMeters || 1000;
+        const nextRadius = currentRadius + 1000;
+
+        let newlyEligible: string[] = [];
+        if (nextRadius <= 6000) {
+          newlyEligible = vehicleDistances
+            .filter(v => v.distance <= nextRadius)
+            .map(v => v.driverId);
+        } else {
+          // Beyond 6km: Global Broadcast to ALL online drivers of this vehicle type
+          newlyEligible = vehicleDistances.map(v => v.driverId);
+        }
+
+        const mergedEligible = Array.from(new Set([...Array.from(currentEligible), ...newlyEligible]));
+
+        if (mergedEligible.length > currentEligible.size || nextRadius !== currentRadius) {
+          console.log(`[Radial Expansion] Trip ${t.id} expanded search radius to ${nextRadius > 6000 ? 'Global Broadcast' : nextRadius + 'm'}. Total eligible drivers: ${mergedEligible.length}`);
+          return {
+            ...t,
+            currentRadiusMeters: nextRadius,
+            eligibleDriverIds: mergedEligible
+          };
+        }
+
+        return t;
+      }));
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [trips, kekes, drivers]);
+
   // 2. Rider Auth
   const riderLogin = async (email: string) => {
     const found = riders.find(r => r.email.toLowerCase() === email.toLowerCase());
@@ -714,7 +764,12 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!currentDriver) return;
     setKekes(prev => prev.map(k => {
       if (k.id === currentDriver.kekeId) {
-        const updated = { ...k, isOnline: !k.isOnline };
+        const nextOnline = !k.isOnline;
+        const updated = { 
+          ...k, 
+          isOnline: nextOnline, 
+          driverId: nextOnline ? currentDriver.id : k.driverId 
+        };
         upsertVehicle(updated).catch(console.error);
         return updated;
       }
@@ -908,6 +963,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const route = await fetchGoogleRoute(pickup.lat, pickup.lng, dest.lat, dest.lng, GOOGLE_MAPS_API_KEY);
 
     // ─── Proximity Matching: Find eligible drivers within radius ──────────
+    // Anchor strictly to selected pickup coordinates (pickup.lat, pickup.lng)
     const onlineVehiclesOfType = kekes.filter(k => k.isOnline && k.vehicleType === vehicleType);
     const SEARCH_RADII = [
       1000, // 1km — primary
@@ -921,27 +977,31 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Calculate distances from each online vehicle to pickup
     const vehicleDistances = onlineVehiclesOfType.map(k => {
       const dist = getDistanceMeters(k.lat, k.lng, pickup.lat, pickup.lng);
-      return { vehicleId: k.id, driverId: k.driverId, distance: dist };
-    }).filter(v => v.driverId !== null);
+      const mappedDriverId = k.driverId || drivers.find(d => d.kekeId === k.id)?.id || null;
+      return { vehicleId: k.id, driverId: mappedDriverId, distance: dist };
+    }).filter((v): v is { vehicleId: number; driverId: string; distance: number } => v.driverId !== null);
 
     // Step through each radius ring — stop as soon as we find at least one driver
     let eligibleDriverIds: string[] = [];
+    let initialRadius = 1000;
     for (const radius of SEARCH_RADII) {
       const found = vehicleDistances
         .filter(v => v.distance <= radius)
-        .map(v => v.driverId as string);
+        .map(v => v.driverId);
       if (found.length > 0) {
         eligibleDriverIds = found;
-        console.log(`[Proximity] Found ${found.length} driver(s) within ${radius / 1000}km`);
+        initialRadius = radius;
+        console.log(`[Proximity] Found ${found.length} driver(s) within ${radius / 1000}km of Pickup landmark: ${pickup.name}`);
         break;
       }
     }
 
-    // If still no drivers found within 6km, allow all online drivers of this vehicle type
+    // Global Fallback: If still no drivers found within 6km, allow ALL online drivers of this vehicle type
     if (eligibleDriverIds.length === 0) {
-      eligibleDriverIds = vehicleDistances.map(v => v.driverId as string);
+      eligibleDriverIds = vehicleDistances.map(v => v.driverId);
       if (eligibleDriverIds.length > 0) {
-        console.log(`[Proximity] No drivers within 6km — falling back to all ${eligibleDriverIds.length} online driver(s)`);
+        initialRadius = 99999;
+        console.log(`[Proximity Fallback] Global broadcast to all ${eligibleDriverIds.length} online driver(s) regardless of distance`);
       }
     }
 
@@ -976,7 +1036,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       completedAt: null,
       routeCoords: route,
       seatsBooked: seats,
-      eligibleDriverIds
+      eligibleDriverIds,
+      declinedDriverIds: [],
+      currentRadiusMeters: initialRadius
     };
 
     console.log(`[Proximity] Trip ${newTrip.id}: ${eligibleDriverIds.length} eligible driver(s) within range`);
@@ -1136,17 +1198,49 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const declineTrip = (tripId: string) => {
     const trip = trips.find(t => t.id === tripId);
-    if (trip && trip.status === 'requested') {
+    if (!trip || trip.status !== 'requested') return;
+
+    // Track which driver declined
+    const decliningDriverId = currentDriver ? currentDriver.id : null;
+    const updatedDeclined = decliningDriverId 
+      ? Array.from(new Set([...(trip.declinedDriverIds || []), decliningDriverId]))
+      : (trip.declinedDriverIds || []);
+
+    // Get all online drivers of this vehicle type
+    const onlineVehicles = kekes.filter(k => k.isOnline && k.vehicleType === trip.vehicleType);
+    const allOnlineDrivers = onlineVehicles
+      .map(k => k.driverId || drivers.find(d => d.kekeId === k.id)?.id || null)
+      .filter((id): id is string => id !== null);
+
+    // Remaining drivers who have NOT declined this trip
+    const remainingDrivers = allOnlineDrivers.filter(id => !updatedDeclined.includes(id));
+
+    if (remainingDrivers.length > 0) {
+      // Expand search to include remaining online drivers
       setTrips(prev => prev.map(t => {
         if (t.id === tripId) {
-          return { ...t, status: 'cancelled' as const };
+          const newEligible = Array.from(new Set([...(t.eligibleDriverIds || []), ...remainingDrivers]));
+          return {
+            ...t,
+            declinedDriverIds: updatedDeclined,
+            eligibleDriverIds: newEligible
+          };
+        }
+        return t;
+      }));
+      console.log(`[Dispatch] Driver ${decliningDriverId || 'unknown'} declined/timed-out on trip ${tripId}. Re-broadcasting to ${remainingDrivers.length} remaining online driver(s).`);
+    } else {
+      // All online drivers of this vehicle type have declined
+      setTrips(prev => prev.map(t => {
+        if (t.id === tripId) {
+          return { ...t, status: 'cancelled' as const, declinedDriverIds: updatedDeclined };
         }
         return t;
       }));
       updateTripStatus(tripId, 'cancelled').catch(console.error);
       showModal({
-        title: "Booking Cancelled",
-        message: "🛺 The driver declined your request. Your trip has been cancelled.",
+        title: "No Driver Available",
+        message: "😔 Drivers in your area are currently busy. Please try requesting your ride again in a few moments.",
         type: 'warning'
       });
     }
