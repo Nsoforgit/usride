@@ -1075,7 +1075,7 @@ export const DriverView: React.FC = () => {
                       gap: '6px',
                       boxShadow: '0 4px 12px rgba(4, 120, 87, 0.4)',
                       animation: 'slideUp 0.2s ease-out',
-                      transform: 'translateY(-40px)'
+                      transform: 'translateY(-43px)'
                     }}
                   >
                     <Eye size={12} /> Show Panel
