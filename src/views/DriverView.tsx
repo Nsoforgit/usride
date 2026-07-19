@@ -170,8 +170,13 @@ export const DriverView: React.FC = () => {
         : currentKeke.currentSeatsAvailable > 0;
 
       if (isEligible) {
-        setIncomingTrip(pendingRequest);
-        setTimerCount(90); // 90-second accept window
+        setIncomingTrip(prev => {
+          if (prev?.id === pendingRequest.id) {
+            return pendingRequest; // Update object reference without resetting countdown timer
+          }
+          setTimerCount(90); // New trip offer: start fresh 90s countdown
+          return pendingRequest;
+        });
       }
     } else {
       setIncomingTrip(null);
