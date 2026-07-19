@@ -78,7 +78,109 @@ export const decodePolyline = (encoded: string): [number, number][] => {
   return poly;
 };
 
-// Fetch real turn-by-turn route coordinates from Google Directions API
+// ─── 1. Google Routes API v2 (Traffic-Aware Turn-by-Turn Routing) ───────────
+export const fetchGoogleRoutesV2 = async (
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+  apiKey: string
+): Promise<{ routeCoords: [number, number][]; durationSeconds?: number; distanceMeters?: number }> => {
+  if (!apiKey || !apiKey.startsWith('AIzaSy')) {
+    return { routeCoords: [[lat1, lng1], [lat2, lng2]] };
+  }
+
+  try {
+    const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: lat1, longitude: lng1 } } },
+        destination: { location: { latLng: { latitude: lat2, longitude: lng2 } } },
+        travelMode: 'DRIVE',
+        routingPreference: 'TRAFFIC_AWARE',
+        units: 'METRIC'
+      })
+    });
+
+    const data = await response.json();
+    if (data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      const encoded = route.polyline?.encodedPolyline;
+      const fallbackCoords: [number, number][] = [[lat1, lng1], [lat2, lng2]];
+      const routeCoords: [number, number][] = encoded ? decodePolyline(encoded) : fallbackCoords;
+      const durationSeconds = route.duration ? parseInt(route.duration.replace('s', '')) : undefined;
+      const distanceMeters = route.distanceMeters;
+
+      console.log(`[Google Routes API v2] Route fetched: ${distanceMeters}m, ${durationSeconds}s duration (Traffic-Aware)`);
+      return { routeCoords, durationSeconds, distanceMeters };
+    }
+  } catch (err) {
+    console.warn('[Google Routes API v2] Fallback to DirectionsService:', err);
+  }
+
+  return { routeCoords: [[lat1, lng1], [lat2, lng2]] };
+};
+
+// ─── 2. Google Roads API (Snap To Roads) ────────────────────────────────────
+export const snapToRoads = async (
+  path: [number, number][],
+  apiKey: string
+): Promise<[number, number][]> => {
+  if (!apiKey || !apiKey.startsWith('AIzaSy') || path.length === 0) return path;
+
+  try {
+    const pathString = path.map(p => `${p[0]},${p[1]}`).join('|');
+    const url = `https://roads.googleapis.com/v1/snapToRoads?path=${encodeURIComponent(pathString)}&interpolate=true&key=${apiKey}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.snappedPoints && data.snappedPoints.length > 0) {
+      const snapped: [number, number][] = data.snappedPoints.map((pt: any) => [
+        pt.location.latitude,
+        pt.location.longitude
+      ]);
+      console.log(`[Google Roads API] Snapped ${path.length} GPS points to ${snapped.length} road geometry points.`);
+      return snapped;
+    }
+  } catch (err) {
+    console.warn('[Google Roads API] Snap to Roads error:', err);
+  }
+
+  return path;
+};
+
+// ─── 3. Google Geolocation API ──────────────────────────────────────────────
+export const fetchGoogleGeolocation = async (apiKey: string): Promise<{ lat: number; lng: number; accuracy: number } | null> => {
+  if (!apiKey || !apiKey.startsWith('AIzaSy')) return null;
+
+  try {
+    const response = await fetch(`https://www.googleapis.com/geolocation/v1/geolocate?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ considerIp: true })
+    });
+    const data = await response.json();
+    if (data.location) {
+      console.log(`[Google Geolocation API] Triangulated location: lat ${data.location.lat}, lng ${data.location.lng} (Accuracy: ${data.accuracy}m)`);
+      return {
+        lat: data.location.lat,
+        lng: data.location.lng,
+        accuracy: data.accuracy || 50
+      };
+    }
+  } catch (err) {
+    console.warn('[Google Geolocation API] Error:', err);
+  }
+
+  return null;
+};
+
+// Fetch real turn-by-turn route coordinates from Google Directions API / Routes API
 export const fetchGoogleRoute = (
   lat1: number,
   lng1: number,
@@ -87,6 +189,15 @@ export const fetchGoogleRoute = (
   apiKey: string
 ): Promise<[number, number][]> => {
   return new Promise(async (resolve) => {
+    // Try modern Routes API v2 first for traffic-aware accuracy
+    if (apiKey && apiKey.startsWith('AIzaSy')) {
+      const r2 = await fetchGoogleRoutesV2(lat1, lng1, lat2, lng2, apiKey);
+      if (r2.routeCoords && r2.routeCoords.length > 2) {
+        resolve(r2.routeCoords);
+        return;
+      }
+    }
+
     // Helper for OSRM free public routing API fallback
     const fetchOSRMFallback = async (): Promise<[number, number][]> => {
       try {
