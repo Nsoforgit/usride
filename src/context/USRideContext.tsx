@@ -909,8 +909,14 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // ─── Proximity Matching: Find eligible drivers within radius ──────────
     const onlineVehiclesOfType = kekes.filter(k => k.isOnline && k.vehicleType === vehicleType);
-    const RADIUS_1 = 1000; // 1km primary search radius
-    const RADIUS_2 = 2000; // 2km fallback radius
+    const SEARCH_RADII = [
+      1000, // 1km — primary
+      2000, // 2km
+      3000, // 3km
+      4000, // 4km
+      5000, // 5km
+      6000, // 6km — last radius before unlimited fallback
+    ];
 
     // Calculate distances from each online vehicle to pickup
     const vehicleDistances = onlineVehiclesOfType.map(k => {
@@ -918,20 +924,25 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return { vehicleId: k.id, driverId: k.driverId, distance: dist };
     }).filter(v => v.driverId !== null);
 
-    // First try 1km radius, then fallback to 2km
-    let eligibleDriverIds = vehicleDistances
-      .filter(v => v.distance <= RADIUS_1)
-      .map(v => v.driverId as string);
-
-    if (eligibleDriverIds.length === 0) {
-      eligibleDriverIds = vehicleDistances
-        .filter(v => v.distance <= RADIUS_2)
+    // Step through each radius ring — stop as soon as we find at least one driver
+    let eligibleDriverIds: string[] = [];
+    for (const radius of SEARCH_RADII) {
+      const found = vehicleDistances
+        .filter(v => v.distance <= radius)
         .map(v => v.driverId as string);
+      if (found.length > 0) {
+        eligibleDriverIds = found;
+        console.log(`[Proximity] Found ${found.length} driver(s) within ${radius / 1000}km`);
+        break;
+      }
     }
 
-    // If still no drivers found within 2km, allow all online drivers of this vehicle type
+    // If still no drivers found within 6km, allow all online drivers of this vehicle type
     if (eligibleDriverIds.length === 0) {
       eligibleDriverIds = vehicleDistances.map(v => v.driverId as string);
+      if (eligibleDriverIds.length > 0) {
+        console.log(`[Proximity] No drivers within 6km — falling back to all ${eligibleDriverIds.length} online driver(s)`);
+      }
     }
 
     if (eligibleDriverIds.length === 0) {
