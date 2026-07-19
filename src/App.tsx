@@ -40,53 +40,64 @@ const MainAppContent: React.FC = () => {
 
   // ── DEBUGGING SCRIPT (EASY TO REMOVE) ──────────────────────────────────────
   React.useEffect(() => {
-    // 1. Monitor Map Clicks (dynamic delegation since map container loads later)
+    // 1. On map click: snapshot scrollY BEFORE and AFTER (in next frame)
     const handleMapClick = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest('.leaflet-container')) {
-        alert(`[DEBUG] Map clicked! Target tag: <${target.tagName.toLowerCase()}> class: "${target.className}"`);
+        const scrollBefore = window.scrollY;
+        // Check again after browser has had a chance to auto-scroll
+        requestAnimationFrame(() => {
+          const scrollAfter = window.scrollY;
+          alert(
+            `[DEBUG] Map clicked!\n` +
+            `scrollY BEFORE click: ${scrollBefore}px\n` +
+            `scrollY AFTER click:  ${scrollAfter}px\n` +
+            `(If these differ, the browser is scrolling the page when you tap the map)`
+          );
+        });
       }
     };
     document.addEventListener('click', handleMapClick, true);
     document.addEventListener('touchstart', handleMapClick, true);
 
-    // 2. Monitor Navbar Changes using MutationObserver
-    let observer: MutationObserver | null = null;
-    const initObserver = () => {
+    // 2. IntersectionObserver: alert when navbar leaves or enters the viewport
+    let intersectionObserver: IntersectionObserver | null = null;
+    const initIntersection = () => {
       const navbar = document.querySelector('.phone-navbar');
       if (!navbar) {
-        // Retry if navbar is not yet in DOM (e.g. during splash screen)
-        setTimeout(initObserver, 200);
+        setTimeout(initIntersection, 200);
         return;
       }
-
-      observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          if (mutation.type === 'attributes') {
-            const attrName = mutation.attributeName;
-            const oldValue = mutation.oldValue;
-            const newValue = (mutation.target as HTMLElement).getAttribute(attrName || '');
-            alert(`[DEBUG] Navbar Attribute Changed!\nAttribute: "${attrName}"\nOld Value: "${oldValue}"\nNew Value: "${newValue}"`);
-          }
-        });
-      });
-
-      observer.observe(navbar, {
-        attributes: true,
-        attributeOldValue: true,
-        attributeFilter: ['style', 'class', 'hidden']
-      });
+      intersectionObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            const scrollY = window.scrollY;
+            if (!entry.isIntersecting) {
+              alert(
+                `[DEBUG] Navbar LEFT the viewport!\n` +
+                `window.scrollY = ${scrollY}px\n` +
+                `navbar top edge = ${Math.round(entry.boundingClientRect.top)}px\n` +
+                `(Positive scrollY means the page has scrolled down, pushing navbar up off-screen)`
+              );
+            } else {
+              alert(
+                `[DEBUG] Navbar RETURNED to viewport.\n` +
+                `window.scrollY = ${scrollY}px`
+              );
+            }
+          });
+        },
+        { threshold: 0.1 }
+      );
+      intersectionObserver.observe(navbar);
     };
+    initIntersection();
 
-    initObserver();
-
-    // Clean up observers on unmount
+    // Clean up on unmount
     return () => {
       document.removeEventListener('click', handleMapClick, true);
       document.removeEventListener('touchstart', handleMapClick, true);
-      if (observer) {
-        observer.disconnect();
-      }
+      if (intersectionObserver) intersectionObserver.disconnect();
     };
   }, []);
   // ───────────────────────────────────────────────────────────────────────────
