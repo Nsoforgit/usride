@@ -1539,9 +1539,11 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 6. REAL-TIME MOVEMENT SIMULATION ENGINE
-  // Run a clock every 1.5 seconds to move Kekes that are on active/accepted trips
+  // Run a clock every 300ms to smoothly move vehicles on active/accepted trips
   useEffect(() => {
+    let tickCount = 0;
     const interval = setInterval(() => {
+      tickCount++;
       setKekes(prevKekes => {
         let updated = false;
         const nextKekes = prevKekes.map(keke => {
@@ -1563,21 +1565,11 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return keke;
           }
 
-          // ONLY update coordinate if this tab owns this vehicle (i.e. is the logged-in driver)
-          // OR if we are in the admin/sandbox view and want to run mock simulation (to keep compatibility)
-          const isOwner = currentDriver && keke.id === currentDriver.kekeId;
-          const isSimulatorView = activeView === 'simulator';
-          
-          if (!isOwner && !isSimulatorView) {
-            return keke;
-          }
-
-          // Target is either pickup location (if 'accepted') or destination location (if 'active')
+          // Target is pickup location (if 'accepted') or destination location (if 'active')
           const target = activeTrip.status === 'accepted' 
             ? activeTrip.pickupLocation 
             : activeTrip.destinationLocation;
 
-          // Target coordinate calculation
           let targetLat = target.lat;
           let targetLng = target.lng;
 
@@ -1587,7 +1579,6 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             let closestIdx = 0;
             let minDist = Infinity;
             
-            // Find closest route point
             for (let i = 0; i < route.length; i++) {
               const d = getDistanceMeters(keke.lat, keke.lng, route[i][0], route[i][1]);
               if (d < minDist) {
@@ -1596,7 +1587,6 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             }
 
-            // Target the next coordinate point
             const targetIdx = Math.min(route.length - 1, closestIdx + 1);
             targetLat = route[targetIdx][0];
             targetLng = route[targetIdx][1];
@@ -1604,19 +1594,16 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           const dy = targetLat - keke.lat;
           const dx = targetLng - keke.lng;
-          // Distance to the absolute final destination
           const finalDy = target.lat - keke.lat;
           const finalDx = target.lng - keke.lng;
           const finalDistance = Math.sqrt(finalDx*finalDx + finalDy*finalDy);
 
-          // If very close to final destination, stay there (waiting for boarding or completion trigger)
+          // If very close to final destination, stay there
           if (finalDistance < 0.0003) {
-            // Auto transition from accepted -> active (boarding) for simulation realism
-            // so that if you're not in the driver view, it still proceeds
             if (activeTrip.status === 'accepted') {
               setTimeout(() => {
                 setTrips(prevTrips => prevTrips.map(t => 
-                  t.id === activeTrip.id ? { ...t, status: 'active' } : t
+                  t.id === activeTrip.id ? { ...t, status: 'active' as const } : t
                 ));
                 updateTripStatus(activeTrip.id, 'active').catch(console.error);
               }, 1000);
@@ -1625,7 +1612,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (keke.speed > 0) {
               updated = true;
               const updatedKeke = { ...keke, speed: 0, lat: target.lat, lng: target.lng };
-              if (isOwner) {
+              if (currentDriver && keke.id === currentDriver.kekeId) {
                 upsertVehicle(updatedKeke).catch(console.error);
               }
               return updatedKeke;
@@ -1633,29 +1620,39 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return keke;
           }
 
-          // Calculate step (speed scale factor)
-          const stepSize = 0.0004; // scale of speed
+          // Smooth step size for 300ms intervals (approx 20-30 km/h)
+          const stepSize = 0.00008;
           const angle = Math.atan2(dy, dx);
           
           updated = true;
+          const newLat = keke.lat + Math.sin(angle) * stepSize;
+          const newLng = keke.lng + Math.cos(angle) * stepSize;
+
           const updatedKeke = {
             ...keke,
-            lat: keke.lat + Math.sin(angle) * stepSize * 0.7,
-            lng: keke.lng + Math.cos(angle) * stepSize * 0.7,
-            speed: 25 // mock speed in km/h
+            lat: newLat,
+            lng: newLng,
+            speed: 25
           };
-          if (isOwner) {
+
+          // Console log coordinates updating for debugging visibility
+          console.log(`[GPS Engine] Keke #${keke.id} coords: lat ${newLat.toFixed(6)}, lng ${newLng.toFixed(6)} (Heading to ${activeTrip.status === 'accepted' ? 'Pickup' : 'Destination'})`);
+
+          // Sync to Supabase every ~2 seconds (every 6th tick) if this tab is the vehicle owner
+          const isOwner = currentDriver && keke.id === currentDriver.kekeId;
+          if (isOwner && tickCount % 6 === 0) {
             upsertVehicle(updatedKeke).catch(console.error);
           }
+
           return updatedKeke;
         });
 
         return updated ? nextKekes : prevKekes;
       });
-    }, 1500);
+    }, 300);
 
     return () => clearInterval(interval);
-  }, [trips, currentDriver, activeView]);
+  }, [trips, currentDriver]);
 
   // ─── Reset simulator database to defaults ─────────────────────────────────
   const resetSimulatorDatabase = () => {
