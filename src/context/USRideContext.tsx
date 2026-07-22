@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { fetchGoogleRoute, getDistanceMeters } from '../utils/geofence';
+import { fetchGoogleRoute, getDistanceMeters, estimateBumpsForRoute, calculateBatteryDrop, calculateKekeETA, estimateRangeKm } from '../utils/geofence';
 import { supabase } from '../lib/supabase';
 import {
   fetchAllRiders, fetchAllDrivers, fetchAllVehicles, fetchAllTrips, fetchAllTransactions, fetchAllIncidents,
@@ -1014,6 +1014,20 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return null;
     }
 
+    // ─── Field-Calibrated Battery & ETA Estimation ────────────────────────────
+    const distanceMeters = getDistanceMeters(pickup.lat, pickup.lng, dest.lat, dest.lng);
+    const distanceKm = distanceMeters / 1000;
+    // Look up road bumps from empirically measured UNIBEN campus route data
+    const estimatedBumps = estimateBumpsForRoute(pickup.id, dest.id, distanceKm);
+    // Estimate battery drop using field-derived formula: ΔSoC = D × (α₀ + α₁×L + α₂×B)
+    const estimatedPassengers = rideType === 'drop' ? (vehicleType === 'keke' ? 3 : 3) : seatsBooked;
+    const estimatedEnergyPercent = vehicleType === 'keke'
+      ? calculateBatteryDrop(distanceKm, estimatedPassengers, estimatedBumps)
+      : 0; // Cabs: petrol — not tracked via battery model
+    // Estimated arrival time (minutes) for display
+    const estimatedETAMins = calculateKekeETA(distanceKm, estimatedBumps, vehicleType);
+    console.log(`[Field Model] Route ${pickup.name} → ${dest.name}: ${distanceKm.toFixed(2)}km, ${estimatedBumps} bumps, ETA: ${estimatedETAMins} mins, Battery drop: ${estimatedEnergyPercent.toFixed(1)}%`);
+
     // Create new Trip with eligible driver list
     const newTrip: Trip = {
       id: `trip-${Date.now()}`,
@@ -1031,7 +1045,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       farePerPerson: baseFare,
       transferFee: transferFee,
       totalFare: totalFare,
-      energyUsedPercent: 0,
+      energyUsedPercent: estimatedEnergyPercent,
       createdAt: new Date().toISOString(),
       completedAt: null,
       routeCoords: route,

@@ -1,5 +1,117 @@
 import { UNIBEN_GEOFENCE } from '../context/USRideContext';
 
+// ─── Field-Calibrated Constants (derived from 25 UNIBEN campus trips, July 2026) ──
+// Battery hardware: NE Technology 96V 64Ah (6144 Wh) / Rhinggo 96V 60Ah (5760 Wh)
+export const KEKE_BATTERY_SPEC = {
+  voltageV: 96,
+  capacityAh: 62,          // average of 60Ah and 64Ah across the two battery models recorded
+  energyWh: 5952,          // 96V × 62Ah
+  cruiseSpeedKmH: 24,      // observed average cruise speed in drive mode (field-measured)
+  bumpSpeedKmH: 8,         // observed average speed while crossing a bump (2–14 km/h range, midpoint)
+  bumpDelayMinutes: 0.16,  // ~10 seconds time lost per bump (deceleration + crossing + acceleration)
+  baseBattRatePerKm: 0.80, // %/km at 0 passengers (driver only), field-derived α₀
+  passBattRatePerKm: 0.15, // additional %/km per passenger (field-derived α₁)
+  bumpBattRatePerKm: 0.05, // additional %/km per road bump (field-derived α₂)
+};
+
+// ─── Road Bump Lookup Map for Known UNIBEN Landmark-to-Landmark Routes ───────
+// Sourced from real field test data. Key = "fromId-toId" (landmark IDs from LANDMARKS array)
+// If a route is not listed, a default bump count is estimated from distance.
+export const ROUTE_BUMP_MAP: Record<string, number> = {
+  '1-2':   5, // Main Gate → Engineering
+  '2-1':   5,
+  '1-10':  3, // Main Gate → Ekosodin
+  '10-1':  3,
+  '10-13': 5, // Ekosodin → Library
+  '13-10': 5,
+  '1-8':   4, // Main Gate → Senate/Admin
+  '8-1':   4,
+  '11-22': 1, // ETF → NDDC
+  '22-11': 1,
+  '12-1':  1, // Sports Complex → Main Gate
+  '1-12':  1,
+  '3-1':   7, // Faculty of Law → Main Gate
+  '1-3':   7,
+  '20-9':  5, // Small Gate → Hall 1/2/3
+  '9-20':  5,
+  '9-34':  5, // Hall 1/2/3 → Blocks of Flat
+  '34-9':  5,
+  '22-3':  3, // NDDC → Faculty of Law
+  '3-22':  3,
+  '37-1': 10, // Vet Med → Main Gate
+  '1-37': 10,
+  '2-7':   9, // Engineering Park → Art Faculty
+  '7-2':   9,
+  '32-2': 12, // Tetfund Hostel → Engineering
+  '2-32': 12,
+  '33-12': 9, // Keystone → Sports Complex
+  '12-33': 9,
+  '34-1': 11, // Blocks of Flat → Main Gate
+  '1-34': 11,
+};
+
+/**
+ * Estimate number of road bumps for a route based on landmark IDs.
+ * Falls back to distance-based estimate if route is not in the lookup map.
+ */
+export const estimateBumpsForRoute = (
+  fromLandmarkId: string,
+  toLandmarkId: string,
+  distanceKm: number
+): number => {
+  const key = `${fromLandmarkId}-${toLandmarkId}`;
+  if (ROUTE_BUMP_MAP[key] !== undefined) return ROUTE_BUMP_MAP[key];
+  // Fallback: roughly 3 bumps per km on UNIBEN campus roads (empirically observed average)
+  return Math.round(distanceKm * 3);
+};
+
+/**
+ * Field-calibrated ETA for a Keke trip on UNIBEN campus.
+ * Uses real cruise speed (24 km/h) and bump-delay model (10 sec per bump).
+ * Result in minutes.
+ */
+export const calculateKekeETA = (
+  distanceKm: number,
+  bumps: number,
+  vehicleType: 'keke' | 'cab' = 'keke'
+): number => {
+  const cruiseSpeed = vehicleType === 'cab' ? 35 : KEKE_BATTERY_SPEC.cruiseSpeedKmH; // km/h
+  const cruiseTimeMin = distanceKm / (cruiseSpeed / 60); // mins
+  const bumpTimeMin = bumps * KEKE_BATTERY_SPEC.bumpDelayMinutes;
+  const pickupDelayMin = 2; // base dispatch/pickup overhead
+  return Math.ceil(cruiseTimeMin + bumpTimeMin + pickupDelayMin);
+};
+
+/**
+ * Calculate estimated battery percentage drop for a Keke trip.
+ * Based on field formula: ΔSoC = D × (α₀ + α₁×L + α₂×B)
+ * D = distance km, L = passenger count (excluding driver), B = bumps.
+ */
+export const calculateBatteryDrop = (
+  distanceKm: number,
+  passengers: number,
+  bumps: number
+): number => {
+  const { baseBattRatePerKm, passBattRatePerKm, bumpBattRatePerKm } = KEKE_BATTERY_SPEC;
+  const rate = baseBattRatePerKm + passBattRatePerKm * passengers + bumpBattRatePerKm * bumps;
+  return Math.ceil(distanceKm * rate * 10) / 10; // round up to 1 decimal
+};
+
+/**
+ * Estimate remaining range in km given current battery percentage.
+ * Uses average campus consumption rate at 2 passengers (typical ride).
+ */
+export const estimateRangeKm = (
+  batteryPercent: number,
+  passengers: number = 2
+): number => {
+  const { baseBattRatePerKm, passBattRatePerKm } = KEKE_BATTERY_SPEC;
+  // Average bumps across all routes ≈ 5
+  const avgBumps = 5;
+  const rate = baseBattRatePerKm + passBattRatePerKm * passengers + 0.05 * avgBumps;
+  return Math.floor(batteryPercent / rate);
+};
+
 // Simple rectangular geofence check
 export const isLocationInsideUniben = (lat: number, lng: number): boolean => {
   return (
@@ -34,17 +146,25 @@ export const getDistanceMeters = (
 };
 
 // Calculate ETA based on coordinates and average speed (default 20 km/h)
+// Legacy fallback — prefer calculateKekeETA() for campus routes.
 export const calculateETA = (
   lat1: number,
   lng1: number,
   lat2: number,
   lng2: number,
-  speedKmH: number = 20
+  speedKmH: number = 20,
+  bumps: number = 0,
+  vehicleType: 'keke' | 'cab' = 'keke'
 ): number => {
-  const distance = getDistanceMeters(lat1, lng1, lat2, lng2); // meters
-  const speedMS = (speedKmH * 1000) / 3600; // meters per second
-  const timeSeconds = distance / speedMS;
-  return Math.ceil(timeSeconds / 60); // ETA in minutes (minimum 1 minute)
+  const distanceKm = getDistanceMeters(lat1, lng1, lat2, lng2) / 1000;
+  // Use the field-calibrated model if it's a campus Keke route
+  if (vehicleType === 'keke' || bumps > 0) {
+    return calculateKekeETA(distanceKm, bumps, vehicleType);
+  }
+  // Fallback for cabs: straight speed-based estimate
+  const speedMS = (speedKmH * 1000) / 3600;
+  const timeSeconds = (distanceKm * 1000) / speedMS;
+  return Math.max(1, Math.ceil(timeSeconds / 60));
 };
 
 // Decodes Google encoded polyline points
