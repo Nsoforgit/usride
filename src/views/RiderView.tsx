@@ -272,8 +272,16 @@ export const RiderView: React.FC = () => {
       return;
     }
 
+    // Use the live public key from environment variable
+    const paystackPublicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+    if (!paystackPublicKey || !paystackPublicKey.startsWith('pk_live_')) {
+      showModal({ title: 'Payment Configuration Error', message: 'Payment system is not configured correctly. Please contact support.', type: 'error' });
+      setIsProcessingTopup(false);
+      return;
+    }
+
     const handler = PaystackPop.setup({
-      key: 'pk_test_26e1483b6bd02ecaff90d237ab3d0ad5f331d9f0',
+      key: paystackPublicKey,
       email: currentRider.email,
       amount: amt * 100, // Paystack uses kobo (smallest unit)
       currency: 'NGN',
@@ -288,8 +296,8 @@ export const RiderView: React.FC = () => {
       },
       callback: (response: { reference: string }) => {
         // Payment was completed on Paystack's side.
-        // Update balance locally and database synchronously (makes it work immediately even without webhook)
-        console.log('[Paystack] Payment successful, reference:', response.reference);
+        // Update balance locally and in database immediately (belt-and-suspenders alongside webhook)
+        console.log('[Paystack Live] Payment successful, reference:', response.reference);
         riderTopUpWallet(amt);
         setIsProcessingTopup(false);
         synthSound.playCashRegister();

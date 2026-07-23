@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 
 const NIGERIAN_BANKS = [
-  { code: '001', name: 'Paystack Test Bank (Use for Sandbox testing)' },
   { code: '044', name: 'Access Bank' },
   { code: '058', name: 'Guaranty Trust Bank (GTB)' },
   { code: '057', name: 'Zenith Bank' },
