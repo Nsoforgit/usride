@@ -898,67 +898,17 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   };
 
-  // Withdraw Driver Earnings via secure Paystack Transfer Edge Function
+  // Withdraw Driver Earnings via live Paystack Transfer Edge Function
+  // NO local fallback — any failure shows the real error to protect against phantom payouts
   const withdrawEarnings = async (amount: number, bankCode: string, accountNumber: string): Promise<boolean> => {
     if (!currentDriver) return false;
-    if (currentDriver.walletBalance < amount) return false;
-
-    // Helper function to process mock/fallback payout locally
-    const processLocalFallback = async (reasonMsg: string) => {
-      console.log(`[Payout Fallback] ${reasonMsg} - falling back to client-side database simulation`);
-      
-      const newBalance = currentDriver.walletBalance - amount;
-      
-      try {
-        // 1. Update DB directly
-        await updateDriverBalance(currentDriver.id, newBalance, currentDriver.totalTrips);
-        
-        // 2. Insert transaction log
-        const txCode = `fallback-trf-${Date.now()}`;
-        const newTx: WalletTransaction = {
-          id: `tx-out-${txCode}`,
-          userId: currentDriver.id,
-          userType: 'driver',
-          type: 'withdrawal',
-          amount: amount,
-          reference: `FALLBACK-REF-${Date.now()}`,
-          description: `Payout to Bank (${accountNumber}) - Simulated Sandbox Mode`,
-          createdAt: new Date().toISOString()
-        };
-        
-        setTransactions(prev => [newTx, ...prev]);
-        await insertTransaction(newTx);
-        
-        // 3. Update local state
-        setDrivers(prev => prev.map(d => {
-          if (d.id === currentDriver.id) {
-            return { ...d, walletBalance: newBalance };
-          }
-          return d;
-        }));
-        setCurrentDriver(prev => prev ? { ...prev, walletBalance: newBalance } : null);
-
-        showModal({
-          title: "Simulated Payout Success",
-          message: `⚠️ Edge Function offline/unreachable.\nProcessed locally: Deducted ₦${amount.toLocaleString()} and logged simulated payout.`,
-          type: 'success'
-        });
-        return true;
-      } catch (dbErr) {
-        console.error('[Payout Fallback] Local database update failed:', dbErr);
-        showModal({
-          title: "Payout Failed",
-          message: "Could not connect to Edge Function, and local database sync failed.",
-          type: 'error'
-        });
-        return false;
-      }
-    };
-
-    // If using the sandbox Test Bank (001), execute local processing immediately
-    // to bypass potential Paystack sandbox limits or Edge Function issues
-    if (bankCode === '001') {
-      return await processLocalFallback("Test Bank 001 selected");
+    if (currentDriver.walletBalance < amount) {
+      showModal({
+        title: "Insufficient Balance",
+        message: `Your wallet balance (₦${currentDriver.walletBalance.toLocaleString()}) is less than the withdrawal amount (₦${amount.toLocaleString()}).`,
+        type: 'error'
+      });
+      return false;
     }
 
     try {
@@ -971,31 +921,53 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       });
 
-      if (error || !data || !data.success) {
-        console.error('[Payout] Payout failed:', error || data);
-        // Fallback to local processing if edge function returned specific errors or failed
-        return await processLocalFallback(error?.message || data?.error || "Paystack transfer failed");
+      if (error) {
+        // Supabase/network-level error invoking the function
+        console.error('[Payout] Edge Function invocation error:', error);
+        showModal({
+          title: "Payout Failed",
+          message: `Could not reach the payment server. Please check your internet connection and try again.\n\nDetails: ${error.message || 'Network error'}`,
+          type: 'error'
+        });
+        return false;
       }
 
-      // Calculate new balance
-      const newBalance = currentDriver.walletBalance - amount;
+      if (!data || !data.success) {
+        // Paystack returned a specific error (e.g. wrong account, insufficient balance)
+        const reason = data?.error || 'Paystack declined the transfer.';
+        console.error('[Payout] Paystack error:', reason, data);
+        showModal({
+          title: "Transfer Failed",
+          message: `❌ ${reason}`,
+          type: 'error'
+        });
+        return false;
+      }
 
-      // Update local drivers state list
-      setDrivers(prev => prev.map(d => {
-        if (d.id === currentDriver.id) {
-          return { ...d, walletBalance: newBalance };
-        }
-        return d;
-      }));
+      // ✅ Transfer confirmed by Paystack — update local state
+      // (Edge Function already updated the DB balance; we mirror it here)
+      const newBalance = data.new_balance ?? (currentDriver.walletBalance - amount);
 
-      // Immediately update currentDriver context
+      setDrivers(prev => prev.map(d =>
+        d.id === currentDriver.id ? { ...d, walletBalance: newBalance } : d
+      ));
       setCurrentDriver(prev => prev ? { ...prev, walletBalance: newBalance } : null);
+
+      showModal({
+        title: "Payout Initiated ✅",
+        message: `₦${amount.toLocaleString()} transfer to ${data.recipient_name || accountNumber} has been initiated.\n\nTransfer Code: ${data.transfer_code}\nStatus: ${data.transfer_status}\n\nFunds typically arrive within minutes.`,
+        type: 'success'
+      });
 
       return true;
     } catch (err) {
-      console.error('[Payout] Connection error:', err);
-      // Fallback to local processing if connection times out or fails
-      return await processLocalFallback("Edge Function connection timed out/failed");
+      console.error('[Payout] Unexpected connection error:', err);
+      showModal({
+        title: "Payout Failed",
+        message: "An unexpected error occurred. No money has been deducted. Please try again or contact support.",
+        type: 'error'
+      });
+      return false;
     }
   };
 

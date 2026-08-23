@@ -81,7 +81,7 @@ export const DriverView: React.FC = () => {
   const [editPhoto, setEditPhoto] = useState('');
   
   // Withdrawal states
-  const [bankCode, setBankCode] = useState('001');
+  const [bankCode, setBankCode] = useState('044');
   const [accountNumber, setAccountNumber] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);

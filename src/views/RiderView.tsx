@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUSRide, LANDMARKS, Keke, Trip, Landmark } from '../context/USRideContext';
 import { UnibenMap } from '../components/UnibenMap';
 import { LocationPickerModal } from '../components/LocationPickerModal';
 import { calculateETA, snapCoordinatesToNearestLandmark, getDistanceMeters } from '../utils/geofence';
 import { synthSound } from '../utils/audio';
 import { useUserLocation } from '../hooks/useUserLocation';
+import { supabase } from '../lib/supabase';
+import { dbToTrip } from '../lib/db';
 import { 
   Wallet, MapPin, Navigation, User, LogOut, ArrowRight, ShieldAlert,
   Star, CreditCard, RefreshCw, X, CheckCircle, Clock, Battery, Trash2, History,
@@ -122,6 +124,56 @@ export const RiderView: React.FC = () => {
     }
   }, [trips, currentRider, kekes]);
 
+  // 2. Polling fallback — when searching, re-fetch trip from DB every 5s
+  //    This catches Realtime misses when rider and driver are on different devices
+  const activeTripRef = useRef(activeTrip);
+  const bookingStepRef = useRef(bookingStep);
+  useEffect(() => { activeTripRef.current = activeTrip; }, [activeTrip]);
+  useEffect(() => { bookingStepRef.current = bookingStep; }, [bookingStep]);
+
+  useEffect(() => {
+    if (bookingStep !== 'searching' || !activeTrip) return;
+
+    const poll = setInterval(async () => {
+      // Only poll if still in searching state
+      if (bookingStepRef.current !== 'searching' || !activeTripRef.current) {
+        clearInterval(poll);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('trips')
+          .select('*')
+          .eq('id', activeTripRef.current.id)
+          .single();
+
+        if (error || !data) return;
+        const freshTrip = dbToTrip(data);
+
+        if (freshTrip.status === 'cancelled') {
+          clearInterval(poll);
+          setActiveTrip(null);
+          setSelectedKeke(null);
+          setBookingStep('idle');
+        } else if (freshTrip.status !== 'requested') {
+          // Driver accepted (or trip went active) — force transition to active screen
+          clearInterval(poll);
+          setActiveTrip(freshTrip);
+          setBookingStep('active');
+          const matchKeke = kekes.find(k => k.id === freshTrip.kekeId);
+          if (matchKeke) setSelectedKeke(matchKeke);
+          synthSound.playChime();
+        }
+      } catch (err) {
+        console.warn('[RiderView] Trip poll error:', err);
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(poll);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingStep, activeTrip?.id]);
+
+
   // Dynamic fleet counters
   const onlineKekes = kekes.filter(k => k.isOnline && k.vehicleType === 'keke').length;
   const onlineCabs = kekes.filter(k => k.isOnline && k.vehicleType === 'cab').length;
@@ -228,12 +280,39 @@ export const RiderView: React.FC = () => {
     }
   };
 
-  const handleCancelBooking = () => {
-    if (activeTrip) {
-      cancelRide(activeTrip.id);
-      setActiveTrip(null);
-      setBookingStep('idle');
+  const handleCancelBooking = async () => {
+    if (!activeTrip) return;
+
+    // Check live DB status before cancelling to prevent cancelling an already-accepted trip
+    try {
+      const { data } = await supabase
+        .from('trips')
+        .select('status, driver_id, vehicle_id')
+        .eq('id', activeTrip.id)
+        .single();
+
+      if (data && data.status !== 'requested') {
+        // Driver already accepted — do NOT cancel, instead sync the rider screen
+        const freshTrip = { ...activeTrip, status: data.status as Trip['status'], driverId: data.driver_id, kekeId: data.vehicle_id };
+        setActiveTrip(freshTrip);
+        setBookingStep('active');
+        const matchKeke = kekes.find(k => k.id === data.vehicle_id);
+        if (matchKeke) setSelectedKeke(matchKeke);
+        synthSound.playChime();
+        showModal({
+          title: "Driver Already En Route 🚕",
+          message: "A driver has already accepted your booking and is heading to your pickup. Your trip is now active!",
+          type: 'info'
+        });
+        return;
+      }
+    } catch {
+      // If DB check fails, allow cancel to proceed safely
     }
+
+    cancelRide(activeTrip.id);
+    setActiveTrip(null);
+    setBookingStep('idle');
   };
 
   const handleProcessTopup = (e: React.FormEvent) => {
