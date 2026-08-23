@@ -44,6 +44,7 @@ export const DriverView: React.FC = () => {
     toggleDriverOnline,
     updateKekeEnergy,
     updateCabFinancials,
+    resolveBankAccount,
     withdrawEarnings,
     trips,
     transactions,
@@ -86,6 +87,44 @@ export const DriverView: React.FC = () => {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
+  const [resolvedAccountName, setResolvedAccountName] = useState('');
+  const [isResolvingAccount, setIsResolvingAccount] = useState(false);
+  const [resolveAccountError, setResolveAccountError] = useState('');
+
+  // Real-time bank account name resolution effect
+  useEffect(() => {
+    const cleanAcct = accountNumber.trim();
+    if (cleanAcct.length !== 10) {
+      setResolvedAccountName('');
+      setResolveAccountError('');
+      setIsResolvingAccount(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsResolvingAccount(true);
+    setResolvedAccountName('');
+    setResolveAccountError('');
+
+    const timer = setTimeout(async () => {
+      const res = await resolveBankAccount(bankCode, cleanAcct);
+      if (isCancelled) return;
+      setIsResolvingAccount(false);
+      if (res.success && res.accountName) {
+        setResolvedAccountName(res.accountName);
+        setResolveAccountError('');
+      } else {
+        setResolvedAccountName('');
+        setResolveAccountError(res.error || 'Account not found for this bank.');
+      }
+    }, 400);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [bankCode, accountNumber, resolveBankAccount]);
+
 
   // Manual Energy Input Slider states
   const [energySliderVal, setEnergySliderVal] = useState(currentKeke?.currentBatteryPercent || 80);
@@ -754,11 +793,29 @@ export const DriverView: React.FC = () => {
                   maxLength={10}
                   className="landmark-select-item" 
                   style={{ width: '100%', color: '#1e293b', border: '1px solid #cbd5e1', marginTop: '4px', padding: '10px' }} 
-                  placeholder="0123456789"
+                  placeholder="10-digit NUBAN account number"
                   value={accountNumber}
-                  onChange={(e) => setAccountNumber(e.target.value)}
+                  onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
                   required
                 />
+
+                {/* Real-time Account Verification Status */}
+                {isResolvingAccount && (
+                  <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <RefreshCw size={12} className="keke-pulse" /> Verifying account name with Paystack...
+                  </div>
+                )}
+                {resolvedAccountName && (
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#047857', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '8px 12px', borderRadius: '8px', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CheckCircle size={14} color="#059669" />
+                    <span>Verified: <strong>{resolvedAccountName}</strong></span>
+                  </div>
+                )}
+                {resolveAccountError && !isResolvingAccount && accountNumber.length === 10 && (
+                  <div style={{ fontSize: '11px', color: '#b91c1c', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '6px 10px', borderRadius: '6px', marginTop: '6px' }}>
+                    ⚠️ {resolveAccountError}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -767,14 +824,19 @@ export const DriverView: React.FC = () => {
                   type="number" 
                   className="landmark-select-item" 
                   style={{ width: '100%', color: '#1e293b', border: '1px solid #cbd5e1', marginTop: '4px', padding: '10px' }} 
-                  placeholder="Enter amount"
+                  placeholder="Enter amount (e.g. 500)"
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
                   required
                 />
               </div>
 
-              <button className="gold-btn" type="submit" disabled={isWithdrawing}>
+              <button 
+                className="gold-btn" 
+                type="submit" 
+                disabled={isWithdrawing || isResolvingAccount}
+                style={{ opacity: isWithdrawing || isResolvingAccount ? 0.7 : 1 }}
+              >
                 {isWithdrawing ? (
                   <>
                     <RefreshCw size={14} className="keke-pulse" />
@@ -783,11 +845,14 @@ export const DriverView: React.FC = () => {
                 ) : (
                   <>
                     <ArrowUpRight size={14} />
-                    Transfer to Bank
+                    {resolvedAccountName 
+                      ? `Transfer ₦${parseFloat(withdrawAmount || '0').toLocaleString()} to ${resolvedAccountName}`
+                      : 'Transfer to Bank'}
                   </>
                 )}
               </button>
             </form>
+
 
             {withdrawSuccess && (
               <div style={{

@@ -22,21 +22,13 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { driverId, bankCode, accountNumber, amount } = await req.json();
-
-    console.log(`[Payout] Request: driverId=${driverId}, bank=${bankCode}, acct=${accountNumber}, amount=NGN${amount}`);
-
-    // -- 1. Validate Parameters --
-    if (!driverId || !bankCode || !accountNumber || !amount || amount <= 0) {
-      return new Response(JSON.stringify({ error: 'Missing or invalid parameters' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const body = await req.json();
+    const { action, driverId, bankCode, accountNumber, amount } = body;
 
     const paystackSecretKey = Deno.env.get('PAYSTACK_SECRET_KEY');
     if (!paystackSecretKey) {
       console.error('[Payout] PAYSTACK_SECRET_KEY not set in Supabase Secrets');
-      return new Response(JSON.stringify({ error: 'Server misconfiguration: payment key not set' }), {
+      return new Response(JSON.stringify({ error: 'Server misconfiguration: PAYSTACK_SECRET_KEY not set in Supabase Secrets' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -44,8 +36,47 @@ Deno.serve(async (req: Request) => {
     // Guard against accidentally using a test key in production
     if (paystackSecretKey.startsWith('sk_test_')) {
       console.error('[Payout] Test secret key in use — update PAYSTACK_SECRET_KEY to sk_live_ in Supabase Secrets');
-      return new Response(JSON.stringify({ error: 'Payment system is in test mode. Contact admin.' }), {
+      return new Response(JSON.stringify({ error: 'Payment system is in test mode. Update secret key to live mode in Supabase.' }), {
         status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── ACTION: RESOLVE BANK ACCOUNT NAME ──────────────────────────────
+    if (action === 'resolve') {
+      if (!bankCode || !accountNumber || accountNumber.length !== 10) {
+        return new Response(JSON.stringify({ error: 'Please enter a valid 10-digit NUBAN account number' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log(`[Payout:Resolve] Resolving account ${accountNumber} with bank ${bankCode}`);
+      const resolveRes = await fetch(
+        `https://api.paystack.co/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
+        { headers: { Authorization: `Bearer ${paystackSecretKey}` } }
+      );
+      const resolveData = await resolveRes.json();
+
+      if (!resolveRes.ok || !resolveData.status) {
+        console.error('[Payout:Resolve] Resolution failed:', resolveData);
+        return new Response(
+          JSON.stringify({ error: resolveData.message || 'Could not verify account name. Check the account number and selected bank.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, account_name: resolveData.data.account_name, account_number: accountNumber }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ── ACTION: INITIATE PAYOUT TRANSFER ───────────────────────────────
+    console.log(`[Payout] Request: driverId=${driverId}, bank=${bankCode}, acct=${accountNumber}, amount=NGN${amount}`);
+
+    // -- 1. Validate Parameters --
+    if (!driverId || !bankCode || !accountNumber || !amount || amount <= 0) {
+      return new Response(JSON.stringify({ error: 'Missing or invalid withdrawal parameters. Please check amount and account.' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 

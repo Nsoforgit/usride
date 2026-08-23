@@ -402,8 +402,10 @@ interface USRideContextType {
   toggleDriverOnline: () => void;
   updateKekeEnergy: (batteryPercent: number, hoursRemaining: number) => void;
   updateCabFinancials: (petrolCost: number, cashCollected: number) => void;
+  resolveBankAccount: (bankCode: string, accountNumber: string) => Promise<{ success: boolean; accountName?: string; error?: string }>;
   withdrawEarnings: (amount: number, bankName: string, accountNumber: string) => Promise<boolean>;
   updateVehicleLocation: (lat: number, lng: number) => Promise<void>;
+
   
   // Booking Functions
   bookRide: (rideType: 'shared' | 'drop', vehicleType: 'keke' | 'cab', pickupId: string, destId: string, seatsBooked?: number) => Promise<Trip | null>;
@@ -898,6 +900,43 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   };
 
+  // 3b. Verify Nigerian Bank Account Number with Paystack (real-time name resolution)
+  const resolveBankAccount = async (bankCode: string, accountNumber: string): Promise<{ success: boolean; accountName?: string; error?: string }> => {
+    if (!bankCode || !accountNumber || accountNumber.trim().length !== 10) {
+      return { success: false, error: 'Please enter a valid 10-digit NUBAN account number.' };
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('paystack-payout', {
+        body: {
+          action: 'resolve',
+          bankCode,
+          accountNumber: accountNumber.trim()
+        }
+      });
+
+      if (error) {
+        let msg = '';
+        try {
+          if ((error as any).context) {
+            const errBody = await (error as any).context.json();
+            msg = errBody?.error || errBody?.message || '';
+          }
+        } catch { /* noop */ }
+        return { success: false, error: msg || error.message || 'Could not verify account name.' };
+      }
+
+      if (data && data.success && data.account_name) {
+        return { success: true, accountName: data.account_name };
+      }
+
+      return { success: false, error: data?.error || 'Account number could not be resolved for the selected bank.' };
+    } catch (err: any) {
+      console.warn('[Resolve Bank] Error:', err);
+      return { success: false, error: err?.message || 'Network error verifying account.' };
+    }
+  };
+
   // Withdraw Driver Earnings via live Paystack Transfer Edge Function
   // NO local fallback — any failure shows the real error to protect against phantom payouts
   const withdrawEarnings = async (amount: number, bankCode: string, accountNumber: string): Promise<boolean> => {
@@ -905,7 +944,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (currentDriver.walletBalance < amount) {
       showModal({
         title: "Insufficient Balance",
-        message: `Your wallet balance (₦${currentDriver.walletBalance.toLocaleString()}) is less than the withdrawal amount (₦${amount.toLocaleString()}).`,
+        message: `Your wallet balance (₦${currentDriver.walletBalance.toLocaleString()}) is less than the requested withdrawal amount (₦${amount.toLocaleString()}).`,
         type: 'error'
       });
       return false;
@@ -914,19 +953,29 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const { data, error } = await supabase.functions.invoke('paystack-payout', {
         body: {
+          action: 'transfer',
           driverId: currentDriver.id,
           bankCode,
-          accountNumber,
+          accountNumber: accountNumber.trim(),
           amount
         }
       });
 
       if (error) {
-        // Supabase/network-level error invoking the function
-        console.error('[Payout] Edge Function invocation error:', error);
+        let serverErrorMsg = '';
+        try {
+          if ((error as any).context) {
+            const errBody = await (error as any).context.json();
+            serverErrorMsg = errBody?.error || errBody?.message || '';
+          }
+        } catch { /* noop */ }
+
+        console.error('[Payout] Edge Function invocation error:', error, serverErrorMsg);
         showModal({
           title: "Payout Failed",
-          message: `Could not reach the payment server. Please check your internet connection and try again.\n\nDetails: ${error.message || 'Network error'}`,
+          message: serverErrorMsg
+            ? `❌ ${serverErrorMsg}`
+            : `Could not reach the payment server.\n\nDetails: ${error.message || 'Network error'}`,
           type: 'error'
         });
         return false;
@@ -960,11 +1009,11 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
 
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Payout] Unexpected connection error:', err);
       showModal({
         title: "Payout Failed",
-        message: "An unexpected error occurred. No money has been deducted. Please try again or contact support.",
+        message: `An unexpected error occurred: ${err?.message || 'Please try again'}. No money has been deducted.`,
         type: 'error'
       });
       return false;
@@ -1746,8 +1795,10 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       toggleDriverOnline,
       updateKekeEnergy,
       updateCabFinancials,
+      resolveBankAccount,
       withdrawEarnings,
       updateVehicleLocation,
+
       bookRide,
       cancelRide,
       riderTopUpWallet,
