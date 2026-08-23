@@ -230,26 +230,23 @@ function lsDel(key: string) {
   try { localStorage.removeItem(key); } catch { /* noop */ }
 }
 
-// ─── Default initial data constants ──────────────────────────────────────────
+// ─── Default initial data constants (live production — all balances start at 0) ─
 const INITIAL_RIDERS: Rider[] = [
   { 
     id: 'r1', name: 'Osas Igbinedion', email: 'osas@uniben.edu', role: 'student',
-    phoneNumber: '08031234567', walletBalance: 1500, totalTrips: 12, averageRating: 4.8,
-    savedCards: [
-      { id: 'card-1', last4: '4242', expiry: '12/28', brand: 'Visa' },
-      { id: 'card-2', last4: '5555', expiry: '08/29', brand: 'Mastercard' }
-    ],
+    phoneNumber: '08031234567', walletBalance: 0, totalTrips: 0, averageRating: 5.0,
+    savedCards: [],
     photo: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=100&q=80'
   },
   { 
     id: 'r2', name: 'Dr. Evelyn Alile', email: 'evelyn.alile@uniben.edu', role: 'staff',
-    phoneNumber: '08059876543', walletBalance: 4200, totalTrips: 28, averageRating: 4.9,
-    savedCards: [{ id: 'card-3', last4: '1111', expiry: '05/30', brand: 'Visa' }],
+    phoneNumber: '08059876543', walletBalance: 0, totalTrips: 0, averageRating: 5.0,
+    savedCards: [],
     photo: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=100&q=80'
   },
   { 
     id: 'r3', name: 'Bose Adebayo', email: 'bose@student.uniben.edu', role: 'student',
-    phoneNumber: '08123456789', walletBalance: 300, totalTrips: 4, averageRating: 4.5,
+    phoneNumber: '08123456789', walletBalance: 0, totalTrips: 0, averageRating: 5.0,
     savedCards: [],
     photo: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=100&q=80'
   }
@@ -257,24 +254,24 @@ const INITIAL_RIDERS: Rider[] = [
 
 const INITIAL_DRIVERS: Driver[] = [
   { id: 'd1', name: 'Sunday Egbon', email: 'sunday@usride.uniben.edu', driverIdCode: 'DRV001', kekeId: 1,
-    walletBalance: 4500, totalTrips: 84, averageRating: 4.7, isActive: true, vehicleType: 'keke',
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
     photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
     vehicleModel: 'Wavz Solar Keke X1', vehicleColor: 'Uniben Green', queuedTripId: null, phoneNumber: '08039991111' },
   { id: 'd2', name: 'Musa Ibrahim', email: 'musa@usride.uniben.edu', driverIdCode: 'DRV002', kekeId: 2,
-    walletBalance: 8200, totalTrips: 110, averageRating: 4.9, isActive: true, vehicleType: 'keke',
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
     photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
     vehicleModel: 'EcoDrive Solar Tricycle', vehicleColor: 'Forest Green', queuedTripId: null, phoneNumber: '08058882222' },
   { id: 'd3', name: 'Efosa Osula', email: 'efosa@usride.uniben.edu', driverIdCode: 'DRV003', kekeId: 3,
-    walletBalance: 1200, totalTrips: 19, averageRating: 4.4, isActive: true, vehicleType: 'keke',
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
     photo: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=150&q=80',
     vehicleModel: 'SolarSpeed Tricycle', vehicleColor: 'Lime Green', queuedTripId: null, phoneNumber: '08127773333' },
   { id: 'd4', name: 'Alao Akala', email: 'alao@ucride.uniben.edu', driverIdCode: 'DRV004', kekeId: 18,
-    walletBalance: 3200, totalTrips: 45, averageRating: 4.6, isActive: true, vehicleType: 'cab',
-    petrolCostToday: 4000, cashCollectedToday: 7500,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
+    petrolCostToday: 0, cashCollectedToday: 0,
     photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
     vehicleModel: 'Toyota Corolla 2015', vehicleColor: 'Silver Metallic', queuedTripId: null, phoneNumber: '07036664444' },
   { id: 'd5', name: 'Kingsley Ogie', email: 'kingsley@ucride.uniben.edu', driverIdCode: 'DRV005', kekeId: 19,
-    walletBalance: 5100, totalTrips: 62, averageRating: 4.8, isActive: true, vehicleType: 'cab',
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
     photo: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=150&q=80',
     vehicleModel: 'Lexus ES350 2012', vehicleColor: 'Charcoal Black', queuedTripId: null, phoneNumber: '09015555555' }
