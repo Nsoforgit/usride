@@ -253,6 +253,7 @@ const INITIAL_RIDERS: Rider[] = [
 ];
 
 const INITIAL_DRIVERS: Driver[] = [
+  // ── Keke Drivers (8 total: 3 original + 5 new) ──
   { id: 'd1', name: 'Sunday Egbon', email: 'sunday@usride.uniben.edu', driverIdCode: 'DRV001', kekeId: 1,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
     photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
@@ -265,6 +266,28 @@ const INITIAL_DRIVERS: Driver[] = [
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
     photo: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=150&q=80',
     vehicleModel: 'SolarSpeed Tricycle', vehicleColor: 'Lime Green', queuedTripId: null, phoneNumber: '08127773333' },
+  { id: 'd6', name: 'Osaze Obasuyi', email: 'osaze@usride.uniben.edu', driverIdCode: 'DRV006', kekeId: 4,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
+    photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'Wavz Solar Keke X1', vehicleColor: 'Emerald Green', queuedTripId: null, phoneNumber: '08023334455' },
+  { id: 'd7', name: 'Victor Emeka', email: 'victor@usride.uniben.edu', driverIdCode: 'DRV007', kekeId: 5,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
+    photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'EcoDrive Solar Tricycle', vehicleColor: 'Forest Green', queuedTripId: null, phoneNumber: '08034445566' },
+  { id: 'd8', name: 'Blessing Akhigbe', email: 'blessing@usride.uniben.edu', driverIdCode: 'DRV008', kekeId: 6,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
+    photo: 'https://images.unsplash.com/photo-1522556189639-b150ed9c4330?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'SolarSpeed Tricycle', vehicleColor: 'Uniben Green', queuedTripId: null, phoneNumber: '08125556677' },
+  { id: 'd9', name: 'Chinedu Okonkwo', email: 'chinedu@usride.uniben.edu', driverIdCode: 'DRV009', kekeId: 7,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
+    photo: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'GreenVolt E-Keke', vehicleColor: 'Lime Green', queuedTripId: null, phoneNumber: '08056667788' },
+  { id: 'd10', name: 'Monday Idahosa', email: 'monday@usride.uniben.edu', driverIdCode: 'DRV010', kekeId: 8,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
+    photo: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'CleanRide Solar Trike', vehicleColor: 'Leaf Green', queuedTripId: null, phoneNumber: '07037778899' },
+
+  // ── Cab Drivers (8 total: 2 original + 6 new) ──
   { id: 'd4', name: 'Alao Akala', email: 'alao@ucride.uniben.edu', driverIdCode: 'DRV004', kekeId: 18,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
@@ -274,33 +297,82 @@ const INITIAL_DRIVERS: Driver[] = [
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
     photo: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=150&q=80',
-    vehicleModel: 'Lexus ES350 2012', vehicleColor: 'Charcoal Black', queuedTripId: null, phoneNumber: '09015555555' }
+    vehicleModel: 'Lexus ES350 2012', vehicleColor: 'Charcoal Black', queuedTripId: null, phoneNumber: '09015555555' },
+  { id: 'd11', name: 'Samuel Osagie', email: 'samuel@ucride.uniben.edu', driverIdCode: 'DRV011', kekeId: 20,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
+    petrolCostToday: 0, cashCollectedToday: 0,
+    photo: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'Toyota Camry 2014', vehicleColor: 'Classic White', queuedTripId: null, phoneNumber: '08028889900' },
+  { id: 'd12', name: 'Kenneth Efe', email: 'kenneth@ucride.uniben.edu', driverIdCode: 'DRV012', kekeId: 21,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
+    petrolCostToday: 0, cashCollectedToday: 0,
+    photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'Honda Accord 2013', vehicleColor: 'Navy Blue', queuedTripId: null, phoneNumber: '08139990011' },
+  { id: 'd13', name: 'Emmanuel Bello', email: 'emmanuel@ucride.uniben.edu', driverIdCode: 'DRV013', kekeId: 22,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
+    petrolCostToday: 0, cashCollectedToday: 0,
+    photo: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'Toyota Matrix 2012', vehicleColor: 'Silver Metallic', queuedTripId: null, phoneNumber: '07051112233' },
+  { id: 'd14', name: 'Austin Nosa', email: 'austin@ucride.uniben.edu', driverIdCode: 'DRV014', kekeId: 23,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
+    petrolCostToday: 0, cashCollectedToday: 0,
+    photo: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'Hyundai Elantra 2016', vehicleColor: 'Midnight Black', queuedTripId: null, phoneNumber: '09022223344' },
+  { id: 'd15', name: 'Godwin Iziegbe', email: 'godwin@ucride.uniben.edu', driverIdCode: 'DRV015', kekeId: 24,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
+    petrolCostToday: 0, cashCollectedToday: 0,
+    photo: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'Nissan Almera 2015', vehicleColor: 'Ash Grey', queuedTripId: null, phoneNumber: '08073334455' },
+  { id: 'd16', name: 'Francis Agbonlahor', email: 'francis@ucride.uniben.edu', driverIdCode: 'DRV016', kekeId: 25,
+    walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
+    petrolCostToday: 0, cashCollectedToday: 0,
+    photo: 'https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=crop&w=150&q=80',
+    vehicleModel: 'Toyota Corolla 2016', vehicleColor: 'Ruby Red', queuedTripId: null, phoneNumber: '08184445566' }
 ];
 
 function generateDefaultKekes(): Keke[] {
   const list: Keke[] = [];
+  const kekeDriverMap: Record<number, string> = {
+    1: 'd1', 2: 'd2', 3: 'd3', 4: 'd6', 5: 'd7', 6: 'd8', 7: 'd9', 8: 'd10'
+  };
+
   for (let i = 1; i <= 17; i++) {
     const landmark = LANDMARKS[(i - 1) % LANDMARKS.length];
+    const assignedDriverId = kekeDriverMap[i] || null;
     list.push({
-      id: i, driverId: i <= 3 ? `d${i}` : null,
+      id: i,
+      driverId: assignedDriverId,
       plateNumber: `UNIBEN-${i.toString().padStart(2, '0')}K`,
-      isOnline: i <= 3, currentSeatsAvailable: 5,
-      currentBatteryPercent: 80 - (i * 2), estimatedHoursRemaining: 6,
+      isOnline: assignedDriverId !== null,
+      currentSeatsAvailable: 5,
+      currentBatteryPercent: Math.max(65, 90 - (i * 2)),
+      estimatedHoursRemaining: 7,
       lat: landmark.lat + (Math.random() - 0.5) * 0.001,
       lng: landmark.lng + (Math.random() - 0.5) * 0.001,
-      speed: 0, vehicleType: 'keke'
+      speed: 0,
+      vehicleType: 'keke'
     });
   }
+
+  const cabDriverMap: Record<number, string> = {
+    18: 'd4', 19: 'd5', 20: 'd11', 21: 'd12', 22: 'd13', 23: 'd14', 24: 'd15', 25: 'd16'
+  };
+
   for (let i = 18; i <= 37; i++) {
     const landmark = LANDMARKS[(i - 1) % LANDMARKS.length];
+    const assignedDriverId = cabDriverMap[i] || null;
     list.push({
-      id: i, driverId: i === 18 ? 'd4' : (i === 19 ? 'd5' : null),
+      id: i,
+      driverId: assignedDriverId,
       plateNumber: `UNIBEN-${i.toString().padStart(2, '0')}C`,
-      isOnline: i === 18 || i === 19, currentSeatsAvailable: 4,
-      currentBatteryPercent: 100, estimatedHoursRemaining: 8,
+      isOnline: assignedDriverId !== null,
+      currentSeatsAvailable: 4,
+      currentBatteryPercent: 100,
+      estimatedHoursRemaining: 8,
       lat: landmark.lat + (Math.random() - 0.5) * 0.001,
       lng: landmark.lng + (Math.random() - 0.5) * 0.001,
-      speed: 0, vehicleType: 'cab'
+      speed: 0,
+      vehicleType: 'cab'
     });
   }
   return list;
