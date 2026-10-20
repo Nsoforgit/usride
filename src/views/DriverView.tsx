@@ -74,6 +74,7 @@ export const DriverView: React.FC = () => {
 
   // Login states
   const [driverIdInput, setDriverIdInput] = useState('');
+  const [driverPasswordInput, setDriverPasswordInput] = useState('');
   
   // Dashboard navigation states
   const [driverStep, setDriverStep] = useState<'idle' | 'energy-input' | 'earnings' | 'active' | 'profile'>('idle');
@@ -249,19 +250,17 @@ export const DriverView: React.FC = () => {
 
   const handleDriverLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!driverIdInput) return;
-    const success = await driverLogin(driverIdInput);
-    if (!success) {
+    if (!driverIdInput || !driverPasswordInput) return;
+    const res = await driverLogin(driverIdInput, driverPasswordInput);
+    if (!res.success) {
       showModal({
         title: "Access Denied",
-        message: "Invalid Driver ID code. Try one of the demo drivers below!",
+        message: res.error || "Invalid Driver ID code or password. Please verify your credentials.",
         type: 'error'
       });
+    } else {
+      setDriverPasswordInput('');
     }
-  };
-
-  const handleQuickLogin = async (code: string) => {
-    await driverLogin(code);
   };
 
   const handleApplyEnergySettings = () => {
@@ -327,42 +326,23 @@ export const DriverView: React.FC = () => {
                 placeholder="DRV001"
                 value={driverIdInput}
                 onChange={(e) => setDriverIdInput(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>Driver PIN / Password</label>
+              <input 
+                type="password" 
+                className="landmark-select-item" 
+                style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px' }} 
+                placeholder="Enter your driver password"
+                value={driverPasswordInput}
+                onChange={(e) => setDriverPasswordInput(e.target.value)}
+                required
               />
             </div>
             <button className="gold-btn" type="submit">Access Portal</button>
           </form>
-
-          {/* Quick Select login lists */}
-          <div style={{ marginTop: '35px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-            <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', marginBottom: '10px', fontWeight: '800' }}>Demo Quick Login</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {drivers.map(d => (
-                <button 
-                  key={d.id}
-                  onClick={() => handleQuickLogin(d.driverIdCode)}
-                  style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#fff',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    textAlign: 'left',
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}
-                >
-                  <div>
-                  <strong>{d.name}</strong> ({d.vehicleType === 'keke' ? `Keke ${d.kekeId}` : `Cab ${d.kekeId}`})
-                    <div style={{ opacity: 0.6 }}>Code: {d.driverIdCode} | Brand: {d.vehicleType === 'keke' ? 'USRide' : 'UCRide'}</div>
-                  </div>
-                  <span style={{ color: 'var(--uniben-gold)', fontWeight: 'bold' }}>₦{d.walletBalance}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     );

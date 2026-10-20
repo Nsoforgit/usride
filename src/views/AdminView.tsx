@@ -3,7 +3,7 @@ import { useUSRide, LANDMARKS, Driver, Keke, Landmark } from '../context/USRideC
 import { UnibenMap } from '../components/UnibenMap';
 import { 
   Users, MapPin, Zap, BarChart2, ShieldCheck, Plus, Trash2, 
-  Battery, Play, Info, Check, LogIn, ShieldAlert, CreditCard, LogOut
+  Battery, Play, Info, Check, LogIn, ShieldAlert, CreditCard, LogOut, RefreshCw
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -20,7 +20,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
     adminRegisterDriver,
     safetyIncidents,
     showModal,
-    resetSimulatorDatabase
+    resetSimulatorDatabase,
+    clearDriverFloatingBalances,
+    refreshLiveDashboardData
   } = useUSRide();
 
   // Authentication — defaults to false to request password
@@ -39,6 +41,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
   const [newDriverPlateNumber, setNewDriverPlateNumber] = useState('');
   const [newDriverPhone, setNewDriverPhone] = useState('');
   const [newDriverPhoto, setNewDriverPhoto] = useState('');
+  const [newDriverPassword, setNewDriverPassword] = useState('');
+  const [isSyncingLive, setIsSyncingLive] = useState(false);
 
 
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -88,11 +92,11 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
     }
 
     const valueOrPlate = newDriverVehicleType === 'keke' ? newDriverKekeId : newDriverPlateNumber;
-    adminRegisterDriver(newDriverName, newDriverEmail, newDriverCode, newDriverVehicleType, valueOrPlate, newDriverPhone, newDriverPhoto);
+    adminRegisterDriver(newDriverName, newDriverEmail, newDriverCode, newDriverVehicleType, valueOrPlate, newDriverPhone, newDriverPhoto, newDriverPassword);
 
     showModal({
       title: "Driver Onboarded",
-      message: `Driver ${newDriverName} registered and assigned successfully to the fleet.`,
+      message: `Driver ${newDriverName} (${newDriverCode.toUpperCase()}) registered and assigned successfully to the fleet.`,
       type: 'success'
     });
 
@@ -103,16 +107,16 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
     setNewDriverPlateNumber('');
     setNewDriverPhone('');
     setNewDriverPhoto('');
+    setNewDriverPassword('');
   };
 
   // Filter out vehicles that don't have driver assigned based on type
   const unassignedVehicles = kekes.filter(k => k.driverId === null && k.vehicleType === newDriverVehicleType);
 
-  // Stats Calculations
-  const totalTripsCompleted = trips.filter(t => t.status === 'completed').length;
-  const totalEnergyDrained = trips
-    .filter(t => t.status === 'completed')
-    .reduce((acc, t) => acc + t.energyUsedPercent, 0);
+  // Stats Calculations (Live & Accurate)
+  const completedTripsList = trips.filter(t => t.status === 'completed');
+  const totalTripsCompleted = completedTripsList.length;
+  const totalEnergyDrained = completedTripsList.reduce((acc, t) => acc + (t.energyUsedPercent || 0), 0);
 
   const activeRides = trips.filter(t => t.status === 'accepted' || t.status === 'active').length;
 
@@ -121,9 +125,20 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
     .reduce((acc, t) => acc + t.amount, 0);
 
   const totalRiderWalletPool = riders.reduce((acc, r) => acc + r.walletBalance, 0);
+  const totalDriverWalletPool = drivers.reduce((acc, d) => acc + d.walletBalance, 0);
 
-  const completedKekeTrips = trips.filter(t => t.status === 'completed' && t.vehicleType === 'keke').length;
-  const completedCabTrips = trips.filter(t => t.status === 'completed' && t.vehicleType === 'cab').length;
+  const totalSchoolRevenue = completedTripsList.reduce((acc, t) => acc + (t.transferFee || 20), 0);
+  const totalGrossRideFares = completedTripsList.reduce((acc, t) => acc + (t.totalFare || 0), 0);
+  const totalDriverWithdrawals = transactions
+    .filter(t => t.userType === 'driver' && t.type === 'withdrawal')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const completedKekeTrips = completedTripsList.filter(t => t.vehicleType === 'keke').length;
+  const completedCabTrips = completedTripsList.filter(t => t.vehicleType === 'cab').length;
+  const kekeFleet = kekes.filter(k => k.vehicleType === 'keke');
+  const avgKekeBattery = kekeFleet.length > 0
+    ? Math.round(kekeFleet.reduce((acc, k) => acc + k.currentBatteryPercent, 0) / kekeFleet.length)
+    : 100;
 
   if (!isAdminLoggedIn) {
     return (
@@ -204,18 +219,22 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
             </button>
           </div>
           <button
-            onClick={() => showModal({
-              title: '🔄 Reset Simulator Database',
-              message: 'This will wipe all wallet balances, trips, registered drivers, and active sessions, restoring the app to its original demo state. Are you sure?',
-              type: 'warning',
-              onConfirm: () => { resetSimulatorDatabase(); },
-            })}
+            onClick={async () => {
+              setIsSyncingLive(true);
+              await refreshLiveDashboardData();
+              setIsSyncingLive(false);
+              showModal({
+                title: '✅ Live Data Synchronized',
+                message: 'Driver registry, rider balances, and analytical reports have been refreshed from the live Supabase database.',
+                type: 'success',
+              });
+            }}
             style={{
               padding: '7px 14px',
               borderRadius: '8px',
-              border: '1px solid rgba(239,68,68,0.4)',
-              backgroundColor: 'rgba(239,68,68,0.12)',
-              color: '#f87171',
+              border: '1px solid rgba(16,185,129,0.4)',
+              backgroundColor: 'rgba(16,185,129,0.12)',
+              color: '#34d399',
               fontSize: '11px',
               fontWeight: '700',
               cursor: 'pointer',
@@ -224,9 +243,35 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               gap: '5px',
               transition: 'all 0.2s'
             }}
-            title="Reset all simulator data to defaults"
+            title="Sync all tables and reports with live database"
           >
-            <Trash2 size={13} /> Reset Database
+            <RefreshCw size={13} className={isSyncingLive ? 'spin' : ''} /> {isSyncingLive ? 'Syncing...' : 'Sync Live Data'}
+          </button>
+
+          <button
+            onClick={() => showModal({
+              title: '🧹 Clear Driver Floating Balances',
+              message: 'This will zero out all drivers\' floating wallet balances and test trip counters while keeping riders\' real wallet balances untouched. Proceed?',
+              type: 'warning',
+              onConfirm: () => { clearDriverFloatingBalances(); },
+            })}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: '1px solid rgba(251,191,36,0.4)',
+              backgroundColor: 'rgba(251,191,36,0.12)',
+              color: '#fbbf24',
+              fontSize: '11px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              transition: 'all 0.2s'
+            }}
+            title="Zero out floating driver wallet balances without affecting riders"
+          >
+            <Trash2 size={13} /> Clear Driver Float
           </button>
 
           <button
@@ -417,6 +462,18 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                 />
               </div>
 
+              <div>
+                <label style={{ fontSize: '11px', color: '#94a3b8' }}>Driver Login Password / PIN (Optional)</label>
+                <input 
+                  type="password" 
+                  className="landmark-select-item" 
+                  style={{ width: '100%', color: '#1e293b', border: '1px solid #475569', marginTop: '4px', padding: '10px' }} 
+                  placeholder="Min 4 chars (or driver sets on first login)"
+                  value={newDriverPassword}
+                  onChange={(e) => setNewDriverPassword(e.target.value)}
+                />
+              </div>
+
               <button className="gold-btn" type="submit" style={{ marginTop: '10px' }}>
                 <Plus size={16} /> Onboard Driver
               </button>
@@ -425,9 +482,33 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
 
           {/* Driver List */}
           <div className="admin-card" style={{ flex: 2, minWidth: '280px' }}>
-            <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '15px' }}>
-              Drivers Registry
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  Drivers Registry ({drivers.length} Registered)
+                </h3>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  {drivers.filter(d => d.vehicleType === 'keke').length} USRide Kekes · {drivers.filter(d => d.vehicleType === 'cab').length} UCRide Cabs · Total Driver Wallet Pool: <strong style={{ color: '#38bdf8' }}>₦{totalDriverWalletPool.toLocaleString()}</strong>
+                </span>
+              </div>
+              {totalDriverWalletPool > 0 && (
+                <button
+                  onClick={() => clearDriverFloatingBalances()}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(251,191,36,0.4)',
+                    backgroundColor: 'rgba(251,191,36,0.12)',
+                    color: '#fbbf24',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Zero All Driver Wallets
+                </button>
+              )}
+            </div>
             
             <div style={{ overflowX: 'auto' }}>
               <table className="admin-list-table">
@@ -437,11 +518,11 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                     <th>Photo</th>
                     <th>Name</th>
                     <th>Phone</th>
-                    <th>Email</th>
                     <th>Vehicle Assigned</th>
+                    <th>Trips Done</th>
                     <th>Wallet Balance</th>
                     <th>Rating</th>
-                    <th>Status</th>
+                    <th>Status / Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -457,13 +538,15 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                             style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
                           />
                         </td>
-                        <td style={{ fontWeight: 'bold', color: 'white' }}>{d.name}</td>
+                        <td>
+                          <div style={{ fontWeight: 'bold', color: 'white' }}>{d.name}</div>
+                          <div style={{ fontSize: '10px', color: '#64748b' }}>{d.email}</div>
+                        </td>
                         <td>
                           <a href={`tel:${d.phoneNumber || ''}`} style={{ color: 'var(--uniben-gold)', textDecoration: 'underline' }}>
                             {d.phoneNumber || 'N/A'}
                           </a>
                         </td>
-                        <td>{d.email}</td>
                         <td>
                           <span style={{ 
                             padding: '2px 6px', 
@@ -478,19 +561,42 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                           </span>
                           #{d.kekeId} ({v?.plateNumber || '...'})
                         </td>
-                        <td>₦{d.walletBalance.toLocaleString()}</td>
+                        <td style={{ fontWeight: '600', color: '#cbd5e1' }}>{d.totalTrips || 0}</td>
+                        <td style={{ fontWeight: '700', color: d.walletBalance > 0 ? '#38bdf8' : '#94a3b8' }}>
+                          ₦{d.walletBalance.toLocaleString()}
+                        </td>
                         <td>★ {d.averageRating}</td>
                         <td>
-                          <span style={{
-                            padding: '2px 8px',
-                            borderRadius: '10px',
-                            fontSize: '10px',
-                            fontWeight: 'bold',
-                            backgroundColor: d.isActive ? '#065f46' : '#991b1b',
-                            color: '#fff'
-                          }}>
-                            {d.isActive ? 'Active' : 'Suspended'}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '10px',
+                              fontSize: '10px',
+                              fontWeight: 'bold',
+                              backgroundColor: d.isActive ? '#065f46' : '#991b1b',
+                              color: '#fff'
+                            }}>
+                              {d.isActive ? 'Active' : 'Suspended'}
+                            </span>
+                            {(d.walletBalance > 0 || d.totalTrips > 0) && (
+                              <button
+                                onClick={() => clearDriverFloatingBalances(d.id)}
+                                style={{
+                                  padding: '2px 7px',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(239,68,68,0.4)',
+                                  backgroundColor: 'rgba(239,68,68,0.12)',
+                                  color: '#f87171',
+                                  fontSize: '9px',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                                title="Clear floating balance for this driver"
+                              >
+                                Zero
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -565,24 +671,26 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               <h3>Total Ride Volume</h3>
               <div className="admin-stat">{totalTripsCompleted} Trips Completed</div>
               <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                {completedKekeTrips} USRide (Keke) · {completedCabTrips} UCRide (Cab)
+                {completedKekeTrips} USRide (Keke) · {completedCabTrips} UCRide (Cab) · Gross Fares: ₦{totalGrossRideFares.toLocaleString()}
               </span>
             </div>
 
             <div className="admin-card">
               <h3>Avg USRide Battery Level</h3>
               <div className="admin-stat">
-                {Math.round(kekes.filter(k => k.vehicleType === 'keke').reduce((acc, k) => acc + k.currentBatteryPercent, 0) / kekes.filter(k => k.vehicleType === 'keke').length)}%
+                {avgKekeBattery}%
               </div>
-              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Solar tricycles fleet battery status</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                {kekeFleet.length} Solar Kekes · Total Energy Drained: {totalEnergyDrained.toFixed(1)}%
+              </span>
             </div>
 
             <div className="admin-card">
               <h3>School Revenue (₦20 Fee)</h3>
               <div className="admin-stat" style={{ color: 'var(--uniben-gold)' }}>
-                ₦{(totalTripsCompleted * 20).toLocaleString()}
+                ₦{totalSchoolRevenue.toLocaleString()}
               </div>
-              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Approved administrative transfer levies</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Approved administrative transfer levies from completed trips</span>
             </div>
           </div>
 
@@ -593,7 +701,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               <div className="admin-stat" style={{ color: 'var(--uniben-gold)' }}>
                 ₦{totalRiderTopUps.toLocaleString()}
               </div>
-              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Total funded upfront via card gateways</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Verified live Paystack wallet credits</span>
             </div>
 
             <div className="admin-card">
@@ -601,15 +709,19 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               <div className="admin-stat" style={{ color: 'var(--uniben-green-light)' }}>
                 ₦{totalRiderWalletPool.toLocaleString()}
               </div>
-              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Active float balance held by students/staff</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                Active balance across {riders.filter(r => r.walletBalance > 0).length} funded rider(s)
+              </span>
             </div>
 
             <div className="admin-card">
               <h3>Fleet Digital Wallet Balance</h3>
               <div className="admin-stat" style={{ color: '#38bdf8' }}>
-                ₦{drivers.reduce((acc, d) => acc + d.walletBalance, 0).toLocaleString()}
+                ₦{totalDriverWalletPool.toLocaleString()}
               </div>
-              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Drivers digital earnings pool balance</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                Drivers digital earnings pool · Bank Withdrawals: ₦{totalDriverWithdrawals.toLocaleString()}
+              </span>
             </div>
           </div>
 

@@ -8,7 +8,7 @@ import type { Rider, Driver, Keke, Trip, WalletTransaction, SafetyIncident, Save
 
 // ─── Type helpers (DB row → app model) ───────────────────────────────────────
 
-export function dbToRider(row: Record<string, unknown>, cards: SavedCard[] = []): Rider {
+export function dbToRider(row: Record<string, unknown>, cards: SavedCard[] = [], passwordHash?: string): Rider {
   return {
     id: row.id as string,
     name: row.name as string,
@@ -20,10 +20,11 @@ export function dbToRider(row: Record<string, unknown>, cards: SavedCard[] = [])
     averageRating: Number(row.average_rating),
     photo: row.photo as string | undefined,
     savedCards: cards,
+    passwordHash: passwordHash ?? (row.password as string | undefined),
   };
 }
 
-export function dbToDriver(row: Record<string, unknown>): Driver {
+export function dbToDriver(row: Record<string, unknown>, passwordHash?: string): Driver {
   return {
     id: row.id as string,
     name: row.name as string,
@@ -42,6 +43,7 @@ export function dbToDriver(row: Record<string, unknown>): Driver {
     vehicleColor: row.vehicle_color as string | undefined,
     queuedTripId: (row.queued_trip_id as string | null) ?? null,
     phoneNumber: (row.phone_number as string) ?? '',
+    passwordHash: passwordHash ?? (row.password as string | undefined),
   };
 }
 
@@ -125,17 +127,52 @@ export async function fetchAllRiders(): Promise<Rider[]> {
 
   const { data: cardRows } = await supabase.from('saved_cards').select('*');
   const cardsByRider: Record<string, SavedCard[]> = {};
+  const passByRider: Record<string, string> = {};
+
   for (const c of cardRows ?? []) {
+    if (c.brand === '__auth_hash__') {
+      passByRider[c.rider_id as string] = c.expiry as string;
+      continue;
+    }
+    if (c.brand === '__drv_auth__') {
+      continue;
+    }
     const rid = c.rider_id as string;
     if (!cardsByRider[rid]) cardsByRider[rid] = [];
     cardsByRider[rid].push({ id: c.id, last4: c.last4, expiry: c.expiry, brand: c.brand });
   }
 
-  return (riderRows ?? []).map(r => dbToRider(r, cardsByRider[r.id as string] ?? []));
+  return (riderRows ?? []).map(r =>
+    dbToRider(r, cardsByRider[r.id as string] ?? [], passByRider[r.id as string])
+  );
+}
+
+export async function saveUserPasswordHash(
+  userType: 'rider' | 'driver',
+  userId: string,
+  passwordHash: string
+): Promise<void> {
+  if (userType === 'rider') {
+    await supabase.from('saved_cards').upsert({
+      id: `auth-rider-${userId}`,
+      rider_id: userId,
+      last4: 'PASS',
+      expiry: passwordHash,
+      brand: '__auth_hash__',
+    });
+  } else {
+    await supabase.from('saved_cards').upsert({
+      id: `auth-driver-${userId}`,
+      rider_id: 'r1',
+      last4: userId,
+      expiry: passwordHash,
+      brand: '__drv_auth__',
+    });
+  }
 }
 
 export async function upsertRider(rider: Rider): Promise<void> {
-  const { savedCards, ...rest } = rider;
+  const { savedCards, passwordHash, ...rest } = rider;
   const { error } = await supabase.from('riders').upsert({
     id: rest.id,
     name: rest.name,
@@ -149,12 +186,22 @@ export async function upsertRider(rider: Rider): Promise<void> {
   });
   if (error) throw error;
 
-  // Sync saved cards: delete all then re-insert
-  await supabase.from('saved_cards').delete().eq('rider_id', rider.id);
+  // Sync saved cards (without deleting the __auth_hash__ or __drv_auth__ records)
+  await supabase
+    .from('saved_cards')
+    .delete()
+    .eq('rider_id', rider.id)
+    .neq('brand', '__auth_hash__')
+    .neq('brand', '__drv_auth__');
+
   if (savedCards && savedCards.length > 0) {
     await supabase.from('saved_cards').insert(
       savedCards.map(c => ({ id: c.id, rider_id: rider.id, last4: c.last4, expiry: c.expiry, brand: c.brand }))
     );
+  }
+
+  if (passwordHash) {
+    await saveUserPasswordHash('rider', rider.id, passwordHash);
   }
 }
 
@@ -181,6 +228,23 @@ export async function updateDriverBalance(driverId: string, walletBalance: numbe
   if (error) throw error;
 }
 
+/**
+ * Clears all floating/virtual balances and resets daily financials for all drivers,
+ * leaving rider balances completely untouched.
+ */
+export async function clearAllDriverBalancesInDb(): Promise<void> {
+  const { error } = await supabase
+    .from('drivers')
+    .update({
+      wallet_balance: 0,
+      total_trips: 0,
+      petrol_cost_today: 0,
+      cash_collected_today: 0,
+    })
+    .neq('id', '');
+  if (error) throw error;
+}
+
 export async function registerRider(rider: Rider): Promise<void> {
   return upsertRider(rider);
 }
@@ -190,7 +254,20 @@ export async function registerRider(rider: Rider): Promise<void> {
 export async function fetchAllDrivers(): Promise<Driver[]> {
   const { data, error } = await supabase.from('drivers').select('*').order('created_at');
   if (error) throw error;
-  return (data ?? []).map(dbToDriver);
+
+  const { data: drvAuthRows } = await supabase
+    .from('saved_cards')
+    .select('last4, expiry')
+    .eq('brand', '__drv_auth__');
+
+  const passByDriver: Record<string, string> = {};
+  for (const row of drvAuthRows ?? []) {
+    if (row.last4 && row.expiry) {
+      passByDriver[row.last4 as string] = row.expiry as string;
+    }
+  }
+
+  return (data ?? []).map(d => dbToDriver(d, passByDriver[d.id as string]));
 }
 
 export async function upsertDriver(driver: Driver): Promise<void> {
@@ -214,6 +291,10 @@ export async function upsertDriver(driver: Driver): Promise<void> {
     phone_number: driver.phoneNumber ?? null,
   });
   if (error) throw error;
+
+  if (driver.passwordHash) {
+    await saveUserPasswordHash('driver', driver.id, driver.passwordHash);
+  }
 }
 
 // ─── VEHICLES (Kekes + Cabs) ──────────────────────────────────────────────────

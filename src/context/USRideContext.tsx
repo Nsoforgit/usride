@@ -5,11 +5,34 @@ import {
   fetchAllRiders, fetchAllDrivers, fetchAllVehicles, fetchAllTrips, fetchAllTransactions, fetchAllIncidents,
   upsertRider, upsertDriver, upsertVehicle, insertTrip, updateTripStatus, insertTransaction, insertIncident,
   updateRiderBalance, updateDriverBalance,
+  saveUserPasswordHash, clearAllDriverBalancesInDb,
   deleteAllUserData,
   dbToRider, dbToDriver, dbToKeke, dbToTrip, dbToTransaction, dbToIncident
 } from '../lib/db';
 
 export const GOOGLE_MAPS_API_KEY = "AIzaSyBAf1ytrEZjvqOVpHwmmO5Xb5GUzdy5AB0";
+
+/**
+ * Deterministic SHA-256 password hash using Web Crypto API (with fallback).
+ */
+async function hashPassword(plain: string): Promise<string> {
+  const normalized = plain.trim();
+  try {
+    const msgBuffer = new TextEncoder().encode(`usride-salt-v1:${normalized}`);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    // Fallback if crypto.subtle is unavailable on non-HTTPS local network IP
+    let h = 2166136261;
+    const str = `usride-salt-v1:${normalized}`;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return `fnv1a_${(h >>> 0).toString(16)}`;
+  }
+}
 
 export interface SavedCard {
   id: string;
@@ -29,6 +52,7 @@ export interface Rider {
   averageRating: number;
   savedCards?: SavedCard[];
   photo?: string;
+  passwordHash?: string;
 }
 
 export interface Driver {
@@ -49,6 +73,7 @@ export interface Driver {
   vehicleColor?: string;
   queuedTripId?: string | null;
   phoneNumber?: string;
+  passwordHash?: string;
 }
 
 export interface Keke {
@@ -392,10 +417,10 @@ interface USRideContextType {
   setActiveView: (view: 'rider' | 'driver' | 'admin' | 'simulator') => void;
   
   // Auth Functions
-  riderLogin: (email: string) => Promise<boolean>;
-  riderRegister: (name: string, email: string, role: 'student' | 'staff' | 'other', phoneNumber: string) => Promise<boolean>;
+  riderLogin: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  riderRegister: (name: string, email: string, role: 'student' | 'staff' | 'other', phoneNumber: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   riderLogout: () => void;
-  driverLogin: (driverIdCode: string) => Promise<boolean>;
+  driverLogin: (driverIdCode: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   driverLogout: () => void;
   
   // Driver Keke controls
@@ -421,7 +446,9 @@ interface USRideContextType {
   completeTrip: (tripId: string) => void;
   rateUser: (tripId: string, rating: number, isRatingDriver: boolean) => void;
   chargeKeke: () => void;
-  adminRegisterDriver: (name: string, email: string, driverIdCode: string, vehicleType: 'keke' | 'cab', vehicleIdOrPlate: string, phoneNumber?: string, photo?: string) => void;
+  adminRegisterDriver: (name: string, email: string, driverIdCode: string, vehicleType: 'keke' | 'cab', vehicleIdOrPlate: string, phoneNumber?: string, photo?: string, password?: string) => void;
+  clearDriverFloatingBalances: (singleDriverId?: string) => Promise<void>;
+  refreshLiveDashboardData: () => Promise<void>;
   updateRiderProfile: (phoneNumber: string, photo: string) => void;
   updateDriverProfile: (phoneNumber: string, photo: string) => void;
   resetSimulatorDatabase: () => void;
@@ -482,34 +509,30 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [currentDriver]);
 
   // ─── 3. Supabase bootstrap — load fresh data on mount ─────────────────────
-  useEffect(() => {
-    let cancelled = false;
-    async function bootstrap() {
-      try {
-        const [sbRiders, sbDrivers, sbVehicles, sbTrips, sbTx, sbSos] = await Promise.all([
-          fetchAllRiders(), fetchAllDrivers(), fetchAllVehicles(),
-          fetchAllTrips(), fetchAllTransactions(), fetchAllIncidents()
-        ]);
-        if (cancelled) return;
-        if (sbRiders.length > 0)  { setRiders(sbRiders);  lsSet(LS_KEYS.riders, sbRiders); }
-        if (sbDrivers.length > 0) { setDrivers(sbDrivers); lsSet(LS_KEYS.drivers, sbDrivers); }
-        if (sbVehicles.length > 0){ setKekes(sbVehicles);  lsSet(LS_KEYS.kekes, sbVehicles); }
-        setTrips(sbTrips);         lsSet(LS_KEYS.trips, sbTrips);
-        setTransactions(sbTx);     lsSet(LS_KEYS.transactions, sbTx);
-        setSafetyIncidents(sbSos); lsSet(LS_KEYS.safetyIncidents, sbSos);
+  const refreshLiveDashboardData = async () => {
+    try {
+      const [sbRiders, sbDrivers, sbVehicles, sbTrips, sbTx, sbSos] = await Promise.all([
+        fetchAllRiders(), fetchAllDrivers(), fetchAllVehicles(),
+        fetchAllTrips(), fetchAllTransactions(), fetchAllIncidents()
+      ]);
+      if (sbRiders.length > 0)  { setRiders(sbRiders);  lsSet(LS_KEYS.riders, sbRiders); }
+      if (sbDrivers.length > 0) { setDrivers(sbDrivers); lsSet(LS_KEYS.drivers, sbDrivers); }
+      if (sbVehicles.length > 0){ setKekes(sbVehicles);  lsSet(LS_KEYS.kekes, sbVehicles); }
+      setTrips(sbTrips);         lsSet(LS_KEYS.trips, sbTrips);
+      setTransactions(sbTx);     lsSet(LS_KEYS.transactions, sbTx);
+      setSafetyIncidents(sbSos); lsSet(LS_KEYS.safetyIncidents, sbSos);
 
-        // Restore logged-in session from localStorage IDs against fresh Supabase data
-        const riderId = localStorage.getItem(LS_KEYS.currentRiderId);
-        const driverId = localStorage.getItem(LS_KEYS.currentDriverId);
-        if (riderId) { const r = sbRiders.find(x => x.id === riderId); if (r) setCurrentRider(r); }
-        if (driverId){ const d = sbDrivers.find(x => x.id === driverId); if (d) setCurrentDriver(d); }
-      } catch (err) {
-        // Network unavailable — silently keep localStorage data already in state
-        console.warn('[USRide] Supabase unreachable, running on local cache:', err);
-      }
+      const riderId = localStorage.getItem(LS_KEYS.currentRiderId);
+      const driverId = localStorage.getItem(LS_KEYS.currentDriverId);
+      if (riderId) { const r = sbRiders.find(x => x.id === riderId); if (r) setCurrentRider(r); }
+      if (driverId){ const d = sbDrivers.find(x => x.id === driverId); if (d) setCurrentDriver(d); }
+    } catch (err) {
+      console.warn('[USRide] Supabase unreachable, running on local cache:', err);
     }
-    bootstrap();
-    return () => { cancelled = true; };
+  };
+
+  useEffect(() => {
+    refreshLiveDashboardData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -579,8 +602,12 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               if (exists) {
                 return prev.map(d => {
                   if (d.id === freshDriver.id) {
-                    // Preserve local photo if DB returned none
-                    return { ...freshDriver, photo: freshDriver.photo || d.photo };
+                    // Preserve local photo and passwordHash if DB row update omitted them
+                    return {
+                      ...freshDriver,
+                      photo: freshDriver.photo || d.photo,
+                      passwordHash: freshDriver.passwordHash || d.passwordHash,
+                    };
                   }
                   return d;
                 });
@@ -590,8 +617,11 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
             setCurrentDriver(prev => {
               if (prev && prev.id === freshDriver.id) {
-                // Preserve local photo if DB returned none
-                return { ...freshDriver, photo: freshDriver.photo || prev.photo };
+                return {
+                  ...freshDriver,
+                  photo: freshDriver.photo || prev.photo,
+                  passwordHash: freshDriver.passwordHash || prev.passwordHash,
+                };
               }
               return prev;
             });
@@ -613,13 +643,16 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             setRiders(prev => {
               const matched = prev.find(r => r.id === payload.new.id);
-              const freshRider = dbToRider(payload.new, matched?.savedCards || []);
+              const freshRider = dbToRider(payload.new, matched?.savedCards || [], matched?.passwordHash);
               const exists = prev.some(r => r.id === freshRider.id);
               if (exists) {
                 return prev.map(r => {
                   if (r.id === freshRider.id) {
-                    // Preserve local photo if DB returned none
-                    return { ...freshRider, photo: freshRider.photo || r.photo };
+                    return {
+                      ...freshRider,
+                      photo: freshRider.photo || r.photo,
+                      passwordHash: freshRider.passwordHash || r.passwordHash,
+                    };
                   }
                   return r;
                 });
@@ -629,9 +662,12 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
             setCurrentRider(prev => {
               if (prev && prev.id === payload.new.id) {
-                const incoming = dbToRider(payload.new, prev.savedCards || []);
-                // Preserve local photo if DB returned none
-                return { ...incoming, photo: incoming.photo || prev.photo };
+                const incoming = dbToRider(payload.new, prev.savedCards || [], prev.passwordHash);
+                return {
+                  ...incoming,
+                  photo: incoming.photo || prev.photo,
+                  passwordHash: incoming.passwordHash || prev.passwordHash,
+                };
               }
               return prev;
             });
@@ -762,57 +798,133 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => clearInterval(interval);
   }, [trips, kekes, drivers]);
 
-  // 2. Rider Auth
-  const riderLogin = async (email: string) => {
-    const found = riders.find(r => r.email.toLowerCase() === email.toLowerCase());
-    if (found) {
-      setCurrentRider(found);
-      return true;
+  // 2. Rider Auth (Password-Protected)
+  const riderLogin = async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) return { success: false, error: 'Please enter your email address.' };
+    if (!password || password.trim().length < 4) {
+      return { success: false, error: 'Please enter your password (minimum 4 characters).' };
     }
-    return false;
+
+    // Check fresh riders list from Supabase if possible so password hashes from other devices are synced
+    let currentRidersList = riders;
+    try {
+      const sbRiders = await fetchAllRiders();
+      if (sbRiders.length > 0) {
+        currentRidersList = sbRiders;
+        setRiders(sbRiders);
+      }
+    } catch { /* fallback to local state */ }
+
+    const found = currentRidersList.find(r => r.email.toLowerCase() === cleanEmail);
+    if (!found) {
+      return { success: false, error: 'No account found with that email. Please create an account first.' };
+    }
+
+    const hashed = await hashPassword(password);
+
+    if (found.passwordHash) {
+      if (found.passwordHash !== hashed) {
+        return { success: false, error: 'Incorrect password for this account. Please try again.' };
+      }
+      setCurrentRider(found);
+      return { success: true };
+    } else {
+      // First-time password binding for legacy accounts created before password protection
+      const securedRider: Rider = { ...found, passwordHash: hashed };
+      setRiders(prev => prev.map(r => r.id === found.id ? securedRider : r));
+      setCurrentRider(securedRider);
+      saveUserPasswordHash('rider', found.id, hashed).catch(console.error);
+      return { success: true };
+    }
   };
 
-  const riderRegister = async (name: string, email: string, role: 'student' | 'staff' | 'other', phoneNumber: string) => {
-    if (riders.some(r => r.email.toLowerCase() === email.toLowerCase())) {
-      return false;
+  const riderRegister = async (
+    name: string,
+    email: string,
+    role: 'student' | 'staff' | 'other',
+    phoneNumber: string,
+    password?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!password || password.trim().length < 4) {
+      return { success: false, error: 'Please choose a password of at least 4 characters.' };
     }
+
+    if (riders.some(r => r.email.toLowerCase() === cleanEmail)) {
+      return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+    }
+
+    const hashed = await hashPassword(password);
     const newRider: Rider = {
       id: `r${Date.now()}`,
-      name, email, role, phoneNumber,
-      walletBalance: 0, totalTrips: 0, averageRating: 5.0,
-      photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'
+      name: name.trim(),
+      email: cleanEmail,
+      role,
+      phoneNumber: phoneNumber.trim(),
+      walletBalance: 0,
+      totalTrips: 0,
+      averageRating: 5.0,
+      photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80',
+      passwordHash: hashed,
     };
     setRiders(prev => [...prev, newRider]);
     setCurrentRider(newRider);
     upsertRider(newRider).catch(console.error);
-    return true;
+    return { success: true };
   };
 
   const riderLogout = () => {
     setCurrentRider(null);
   };
 
-  // 3. Driver Auth
-  const driverLogin = async (driverIdCode: string) => {
-    const found = drivers.find(d => d.driverIdCode.toUpperCase() === driverIdCode.toUpperCase() && d.isActive);
-    if (found) {
-      setCurrentDriver(found);
-      // Synchronously set their keke to prevent any split-second loading flickers in DriverView
-      const match = kekes.find(k => k.id === found.kekeId);
-      if (match) setCurrentKeke(match);
-
-      // Set their keke online
-      setKekes(prev => prev.map(k => {
-        if (k.id === found.kekeId) {
-          const updated = { ...k, driverId: found.id, isOnline: true };
-          upsertVehicle(updated).catch(console.error);
-          return updated;
-        }
-        return k;
-      }));
-      return true;
+  // 3. Driver Auth (Driver ID Code + Password/PIN Protected)
+  const driverLogin = async (driverIdCode: string, password?: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanCode = driverIdCode.trim().toUpperCase();
+    if (!cleanCode) return { success: false, error: 'Please enter your Driver ID Code.' };
+    if (!password || password.trim().length < 4) {
+      return { success: false, error: 'Please enter your Driver PIN / Password (minimum 4 characters).' };
     }
-    return false;
+
+    let currentDriversList = drivers;
+    try {
+      const sbDrivers = await fetchAllDrivers();
+      if (sbDrivers.length > 0) {
+        currentDriversList = sbDrivers;
+        setDrivers(sbDrivers);
+      }
+    } catch { /* fallback to local state */ }
+
+    const found = currentDriversList.find(d => d.driverIdCode.toUpperCase() === cleanCode && d.isActive);
+    if (!found) {
+      return { success: false, error: 'Invalid or inactive Driver ID Code. Contact the Admin if you need help.' };
+    }
+
+    const hashed = await hashPassword(password);
+
+    if (found.passwordHash && found.passwordHash !== hashed) {
+      return { success: false, error: 'Incorrect Driver PIN / Password. Please try again.' };
+    }
+
+    const securedDriver: Driver = found.passwordHash ? found : { ...found, passwordHash: hashed };
+    if (!found.passwordHash) {
+      setDrivers(prev => prev.map(d => d.id === found.id ? securedDriver : d));
+      saveUserPasswordHash('driver', found.id, hashed).catch(console.error);
+    }
+
+    setCurrentDriver(securedDriver);
+    const match = kekes.find(k => k.id === securedDriver.kekeId);
+    if (match) setCurrentKeke(match);
+
+    setKekes(prev => prev.map(k => {
+      if (k.id === securedDriver.kekeId) {
+        const updated = { ...k, driverId: securedDriver.id, isOnline: true };
+        upsertVehicle(updated).catch(console.error);
+        return updated;
+      }
+      return k;
+    }));
+    return { success: true };
   };
 
   const driverLogout = () => {
@@ -1362,11 +1474,13 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const trip = trips.find(t => t.id === tripId);
     if (!trip) return;
 
-    // 1. Calculate mock energy drain based on trip distance (straight-line calculation)
+    // 1. Use field-calibrated energy drain computed at booking time (or fallback if 0)
     const dy = trip.destinationLocation.lat - trip.pickupLocation.lat;
     const dx = trip.destinationLocation.lng - trip.pickupLocation.lng;
-    const distanceEst = Math.sqrt(dx*dx + dy*dy) * 100; // rough km factor
-    const batteryDrain = Math.max(2, Math.min(15, Math.ceil(distanceEst * 8))); // 2% to 15% drain
+    const distanceEst = Math.sqrt(dx*dx + dy*dy) * 100;
+    const batteryDrain = trip.vehicleType === 'keke'
+      ? (trip.energyUsedPercent > 0 ? trip.energyUsedPercent : Math.max(2, Math.min(15, Math.ceil(distanceEst * 8))))
+      : 0;
 
     // 2. Update trip status & trigger queued trip if back-to-back exists
     setTrips(prev => {
@@ -1525,23 +1639,37 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   };
 
-  // Admin Driver Onboarding
-  const adminRegisterDriver = (name: string, email: string, driverIdCode: string, vehicleType: 'keke' | 'cab', vehicleIdOrPlate: string, phoneNumber?: string, photo?: string) => {
-    const nextDriverId = `d${drivers.length + 1}`;
+  // Admin Driver Onboarding (FK-safe + Password-supported)
+  const adminRegisterDriver = (
+    name: string,
+    email: string,
+    driverIdCode: string,
+    vehicleType: 'keke' | 'cab',
+    vehicleIdOrPlate: string,
+    phoneNumber?: string,
+    photo?: string,
+    password?: string
+  ) => {
+    const maxNum = drivers.reduce((max, d) => {
+      const n = parseInt(d.id.replace(/\D/g, ''), 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+    const nextDriverId = `d${maxNum + 1}`;
     let assignedVehicleId = 0;
+    let targetVehicle: Keke | null = null;
 
     if (vehicleType === 'keke') {
-      assignedVehicleId = parseInt(vehicleIdOrPlate);
-      // Assign driver to existing Keke
+      assignedVehicleId = parseInt(vehicleIdOrPlate, 10);
       setKekes(prev => prev.map(k => {
         if (k.id === assignedVehicleId) {
-          return { ...k, driverId: nextDriverId, isOnline: true };
+          const updated = { ...k, driverId: nextDriverId, isOnline: true };
+          targetVehicle = updated;
+          return updated;
         }
         return k;
       }));
     } else {
-      // Cab: create new vehicle dynamically
-      assignedVehicleId = Math.max(...kekes.map(k => k.id)) + 1;
+      assignedVehicleId = Math.max(37, ...kekes.map(k => k.id)) + 1;
       const landmark = LANDMARKS[Math.floor(Math.random() * LANDMARKS.length)];
       const newCab: Keke = {
         id: assignedVehicleId,
@@ -1556,20 +1684,23 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         speed: 0,
         vehicleType: 'cab'
       };
+      targetVehicle = newCab;
       setKekes(prev => [...prev, newCab]);
     }
 
     const newDrv: Driver = {
       id: nextDriverId,
-      name,
-      email,
-      driverIdCode: driverIdCode.toUpperCase(),
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      driverIdCode: driverIdCode.trim().toUpperCase(),
       kekeId: assignedVehicleId,
       walletBalance: 0,
       totalTrips: 0,
       averageRating: 5.0,
       isActive: true,
       vehicleType,
+      petrolCostToday: 0,
+      cashCollectedToday: 0,
       phoneNumber: phoneNumber || ('081' + Math.floor(10000000 + Math.random() * 90000000)),
       photo: photo || (vehicleType === 'keke'
         ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80'
@@ -1577,7 +1708,52 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     setDrivers(prev => [...prev, newDrv]);
-    upsertDriver(newDrv).catch(console.error);
+
+    // Persist in FK-safe sequence (vehicle with driverId=null -> driver -> vehicle with driverId=nextDriverId)
+    (async () => {
+      try {
+        if (password && password.trim().length >= 4) {
+          newDrv.passwordHash = await hashPassword(password);
+          setDrivers(prev => prev.map(d => d.id === newDrv.id ? { ...d, passwordHash: newDrv.passwordHash } : d));
+        }
+        if (targetVehicle) {
+          await upsertVehicle({ ...targetVehicle, driverId: null });
+        }
+        await upsertDriver(newDrv);
+        if (targetVehicle) {
+          await upsertVehicle({ ...targetVehicle, driverId: nextDriverId });
+        }
+      } catch (err) {
+        console.error('[AdminRegisterDriver] Persistence error:', err);
+      }
+    })();
+  };
+
+  // Clear floating/virtual driver balances without touching riders' real balances
+  const clearDriverFloatingBalances = async (singleDriverId?: string) => {
+    if (singleDriverId) {
+      setDrivers(prev => prev.map(d =>
+        d.id === singleDriverId
+          ? { ...d, walletBalance: 0, totalTrips: 0, petrolCostToday: 0, cashCollectedToday: 0 }
+          : d
+      ));
+      if (currentDriver?.id === singleDriverId) {
+        setCurrentDriver(prev => prev ? { ...prev, walletBalance: 0, totalTrips: 0, petrolCostToday: 0, cashCollectedToday: 0 } : null);
+      }
+      await updateDriverBalance(singleDriverId, 0, 0).catch(console.error);
+    } else {
+      setDrivers(prev => prev.map(d => ({
+        ...d,
+        walletBalance: 0,
+        totalTrips: 0,
+        petrolCostToday: 0,
+        cashCollectedToday: 0
+      })));
+      if (currentDriver) {
+        setCurrentDriver(prev => prev ? { ...prev, walletBalance: 0, totalTrips: 0, petrolCostToday: 0, cashCollectedToday: 0 } : null);
+      }
+      await clearAllDriverBalancesInDb().catch(console.error);
+    }
   };
 
   const updateRiderProfile = (phoneNumber: string, photo: string) => {
@@ -1811,6 +1987,8 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       rateUser,
       chargeKeke,
       adminRegisterDriver,
+      clearDriverFloatingBalances,
+      refreshLiveDashboardData,
       updateRiderProfile,
       updateDriverProfile,
       resetSimulatorDatabase,

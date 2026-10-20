@@ -40,10 +40,13 @@ export const RiderView: React.FC = () => {
 
   // Screen states
   const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [registerName, setRegisterName] = useState('');
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerRole, setRegisterRole] = useState<'student' | 'staff'>('student');
   const [registerPhone, setRegisterPhone] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   
   // Booking states
@@ -211,34 +214,50 @@ export const RiderView: React.FC = () => {
 
 
 
-  // Auth Quick Select for easier testing
-  const handleQuickLogin = (email: string) => {
-    riderLogin(email);
-  };
-
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailInput) return;
-    const success = await riderLogin(emailInput);
-    if (!success) {
+    if (!emailInput || !passwordInput) return;
+    const res = await riderLogin(emailInput, passwordInput);
+    if (!res.success) {
       showModal({
-        title: "Account Not Found",
-        message: "Email not found. Try one of the demo accounts below, or click Register!",
+        title: "Sign In Failed",
+        message: res.error || "Invalid email or password. Please check your credentials or register a new account.",
         type: 'error'
       });
+    } else {
+      setPasswordInput('');
     }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!registerName || !registerEmail || !registerPhone) return;
-    const success = await riderRegister(registerName, registerEmail, registerRole, registerPhone);
-    if (!success) {
+    if (!registerName || !registerEmail || !registerPhone || !registerPassword) return;
+    if (registerPassword.length < 4) {
       showModal({
-        title: "Registration Failed",
-        message: "Email address might already exist. Please check or try again.",
+        title: "Weak Password",
+        message: "Password must be at least 4 characters long.",
+        type: 'warning'
+      });
+      return;
+    }
+    if (registerPassword !== registerConfirmPassword) {
+      showModal({
+        title: "Password Mismatch",
+        message: "Passwords do not match. Please verify and try again.",
         type: 'error'
       });
+      return;
+    }
+    const res = await riderRegister(registerName, registerEmail, registerRole, registerPhone, registerPassword);
+    if (!res.success) {
+      showModal({
+        title: "Registration Failed",
+        message: res.error || "Email address might already exist. Please check or try again.",
+        type: 'error'
+      });
+    } else {
+      setRegisterPassword('');
+      setRegisterConfirmPassword('');
     }
   };
 
@@ -326,22 +345,7 @@ export const RiderView: React.FC = () => {
 
     setIsProcessingTopup(true);
 
-    // If a saved card is selected, simulate an instant direct token charge (one-click payment)
-    if (selectedCardId) {
-      setTimeout(() => {
-        riderTopUpWallet(amt);
-        setIsProcessingTopup(false);
-        synthSound.playCashRegister();
-        setTopupSuccess(true);
-        setTimeout(() => {
-          setTopupSuccess(false);
-          setBookingStep('idle');
-        }, 2500);
-      }, 1500);
-      return;
-    }
-
-    // Use the real Paystack Inline popup for new payments
+    // Always use the real Paystack Inline popup for wallet top-ups (no simulated virtual balance bypass)
     // PaystackPop is loaded globally from the <script> tag in index.html
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const PaystackPop = (window as any).PaystackPop;
@@ -463,6 +467,19 @@ export const RiderView: React.FC = () => {
                   placeholder="name@uniben.edu"
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>Password</label>
+                <input 
+                  type="password" 
+                  className="landmark-select-item" 
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #475569', marginTop: '4px' }} 
+                  placeholder="Enter your password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  required
                 />
               </div>
               <button className="primary-btn" type="submit">Sign In</button>
@@ -521,6 +538,30 @@ export const RiderView: React.FC = () => {
                   <option value="staff">Staff Member</option>
                 </select>
               </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>Create Password</label>
+                <input 
+                  type="password" 
+                  className="landmark-select-item" 
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #475569', marginTop: '4px' }} 
+                  placeholder="Minimum 4 characters"
+                  value={registerPassword}
+                  onChange={(e) => setRegisterPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>Confirm Password</label>
+                <input 
+                  type="password" 
+                  className="landmark-select-item" 
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #475569', marginTop: '4px' }} 
+                  placeholder="Re-enter password"
+                  value={registerConfirmPassword}
+                  onChange={(e) => setRegisterConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
               <button className="primary-btn" type="submit">Create Account</button>
               
               <div style={{ textAlign: 'center', fontSize: '12px', marginTop: '10px' }}>
@@ -528,38 +569,6 @@ export const RiderView: React.FC = () => {
               </div>
             </form>
           )}
-
-          {/* Test Account quick log list */}
-          <div style={{ marginTop: '35px', paddingTop: '20px', borderTop: '1px solid #334155' }}>
-            <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '10px', fontWeight: '800' }}>Demo Quick Login</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {riders.map(r => (
-                <button 
-                  key={r.id}
-                  onClick={() => handleQuickLogin(r.email)}
-                  style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid #334155',
-                    color: '#fff',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    textAlign: 'left',
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}
-                >
-                  <div>
-                    <strong>{r.name}</strong> ({r.role === 'student' ? 'Student' : 'Staff'})
-                    <div style={{ opacity: 0.6 }}>{r.email}</div>
-                  </div>
-                  <span style={{ color: 'var(--uniben-gold)', fontWeight: 'bold' }}>₦{r.walletBalance}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     );

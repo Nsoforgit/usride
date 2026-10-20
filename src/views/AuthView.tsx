@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useUSRide } from '../context/USRideContext';
-import { ArrowLeft, Eye, EyeOff, Loader } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Loader, Lock } from 'lucide-react';
 
 type AuthMode = 'select' | 'rider-login' | 'rider-register' | 'driver-login';
 
@@ -21,42 +21,66 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
 
   // Rider login
   const [rEmail, setREmail] = useState('');
+  const [rLoginPassword, setRLoginPassword] = useState('');
 
   // Rider register
   const [rName, setRName] = useState('');
   const [rRegEmail, setRRegEmail] = useState('');
   const [rPhone, setRPhone] = useState('');
   const [rRole, setRRole] = useState<'student' | 'staff' | 'other'>('student');
+  const [rRegPassword, setRRegPassword] = useState('');
+  const [rRegConfirmPassword, setRRegConfirmPassword] = useState('');
 
   // Driver login
   const [dCode, setDCode] = useState('');
+  const [dPassword, setDPassword] = useState('');
 
   const handleRiderLogin = async () => {
     if (!rEmail.trim()) { setError('Please enter your email address.'); return; }
+    if (!rLoginPassword.trim() || rLoginPassword.trim().length < 4) {
+      setError('Please enter your password (minimum 4 characters).');
+      return;
+    }
     setLoading(true); setError('');
-    const ok = await riderLogin(rEmail.trim());
+    const res = await riderLogin(rEmail.trim(), rLoginPassword);
     setLoading(false);
-    if (!ok) setError('No account found with that email. Please register first.');
+    if (!res.success) {
+      setError(res.error || 'Invalid email or password.');
+    }
   };
 
   const handleRiderRegister = async () => {
-    if (!rName.trim() || !rRegEmail.trim() || !rPhone.trim()) {
-      setError('Please fill in all fields.'); return;
+    if (!rName.trim() || !rRegEmail.trim() || !rPhone.trim() || !rRegPassword.trim()) {
+      setError('Please fill in all fields including your password.'); return;
     }
     if (!rRegEmail.includes('@')) { setError('Please enter a valid email address.'); return; }
     if (rPhone.length < 10) { setError('Please enter a valid phone number.'); return; }
+    if (rRegPassword.trim().length < 4) {
+      setError('Password must be at least 4 characters long.'); return;
+    }
+    if (rRegPassword !== rRegConfirmPassword) {
+      setError('Passwords do not match. Please check and try again.'); return;
+    }
     setLoading(true); setError('');
-    const ok = await riderRegister(rName.trim(), rRegEmail.trim(), rRole, rPhone.trim());
+    const res = await riderRegister(rName.trim(), rRegEmail.trim(), rRole, rPhone.trim(), rRegPassword);
     setLoading(false);
-    if (!ok) setError('An account with this email already exists. Please sign in instead.');
+    if (!res.success) {
+      setError(res.error || 'An account with this email already exists. Please sign in instead.');
+    }
   };
 
   const handleDriverLogin = async () => {
     if (!dCode.trim()) { setError('Please enter your Driver ID Code.'); return; }
+    if (!dPassword.trim() || dPassword.trim().length < 4) {
+      setError('Please enter your Driver PIN / Password (minimum 4 characters).');
+      return;
+    }
     setLoading(true); setError('');
-    const ok = await driverLogin(dCode.trim().toUpperCase());
+    const res = await driverLogin(dCode.trim().toUpperCase(), dPassword);
     setLoading(false);
-    if (!ok) setError('Invalid Driver ID Code. Contact the Admin if you need help.');
+    if (!res.success) {
+      setError(res.error || 'Invalid Driver ID Code or PIN. Contact the Admin if you need help.');
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -133,7 +157,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
               }}>
                 <div style={{ fontSize: '28px', marginBottom: '8px' }}>🚗</div>
                 <div style={{ fontWeight: '800', fontSize: '18px' }}>I'm a Driver</div>
-                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>Sign in with your Driver ID Code</div>
+                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>Sign in with your Driver ID Code & PIN</div>
               </button>
             </div>
           </>
@@ -143,7 +167,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
         {mode === 'rider-login' && (
           <>
             <h2 style={{ fontSize: '26px', fontWeight: '900', color: '#1e1040', marginBottom: '6px' }}>Sign In</h2>
-            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '28px' }}>Welcome back! Enter your email to continue.</p>
+            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '28px' }}>
+              Enter your email and password to access your wallet & rides.
+            </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
               <div>
@@ -151,8 +177,35 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
                 <input
                   style={inputStyle} type="email" placeholder="yourname@uniben.edu"
                   value={rEmail} onChange={e => setREmail(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleRiderLogin()}
                 />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...inputStyle, paddingRight: '44px' }}
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={rLoginPassword}
+                    onChange={e => setRLoginPassword(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleRiderLogin()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    style={{
+                      position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex'
+                    }}
+                  >
+                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <span style={{ fontSize: '11px', color: '#6B7280', marginTop: '4px', display: 'block' }}>
+                  <Lock size={11} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '3px' }} />
+                  Existing account without a password? Enter your desired password to secure your account.
+                </span>
               </div>
             </div>
 
@@ -177,7 +230,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
         {mode === 'rider-register' && (
           <>
             <h2 style={{ fontSize: '26px', fontWeight: '900', color: '#1e1040', marginBottom: '6px' }}>Create Account</h2>
-            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '28px' }}>Join UNIBEN Ride in seconds.</p>
+            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '24px' }}>Join UNIBEN Ride with a password-protected wallet.</p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
               <div>
@@ -196,10 +249,42 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
                   value={rPhone} onChange={e => setRPhone(e.target.value)} />
               </div>
               <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Create Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...inputStyle, paddingRight: '44px' }}
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="At least 4 characters"
+                    value={rRegPassword}
+                    onChange={e => setRRegPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    style={{
+                      position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex'
+                    }}
+                  >
+                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Confirm Password</label>
+                <input
+                  style={inputStyle}
+                  type={showPass ? 'text' : 'password'}
+                  placeholder="Re-enter your password"
+                  value={rRegConfirmPassword}
+                  onChange={e => setRRegConfirmPassword(e.target.value)}
+                />
+              </div>
+              <div>
                 <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>I am a</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   {(['student', 'staff', 'other'] as const).map(r => (
-                    <button key={r} onClick={() => setRRole(r)} style={{
+                    <button key={r} type="button" onClick={() => setRRole(r)} style={{
                       flex: 1, padding: '10px', borderRadius: '10px',
                       border: `2px solid ${rRole === r ? '#5B21B6' : '#E9D5FF'}`,
                       backgroundColor: rRole === r ? '#EDE9FE' : '#fff',
@@ -232,18 +317,46 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
           <>
             <h2 style={{ fontSize: '26px', fontWeight: '900', color: '#1e1040', marginBottom: '6px' }}>Driver Sign In</h2>
             <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '28px' }}>
-              Enter your Driver ID Code issued by the UNIBEN Ride Admin.
+              Enter your Driver ID Code and secret PIN/Password.
             </p>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Driver ID Code</label>
-              <input
-                style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '700', fontSize: '18px', textAlign: 'center' }}
-                type="text" placeholder="DRV001"
-                value={dCode} onChange={e => setDCode(e.target.value.toUpperCase())}
-                onKeyDown={e => e.key === 'Enter' && handleDriverLogin()}
-                maxLength={8}
-              />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Driver ID Code</label>
+                <input
+                  style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '700', fontSize: '18px', textAlign: 'center' }}
+                  type="text" placeholder="DRV001"
+                  value={dCode} onChange={e => setDCode(e.target.value.toUpperCase())}
+                  maxLength={8}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Driver PIN / Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...inputStyle, paddingRight: '44px' }}
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="Enter your PIN or password"
+                    value={dPassword}
+                    onChange={e => setDPassword(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleDriverLogin()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    style={{
+                      position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex'
+                    }}
+                  >
+                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <span style={{ fontSize: '11px', color: '#6B7280', marginTop: '4px', display: 'block' }}>
+                  First time signing in? Enter a 4+ character PIN to lock your Driver ID.
+                </span>
+              </div>
             </div>
 
             {error && <p style={{ color: '#DC2626', fontSize: '13px', marginBottom: '16px', padding: '10px 14px', backgroundColor: '#FEF2F2', borderRadius: '10px' }}>{error}</p>}
