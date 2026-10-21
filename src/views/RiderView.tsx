@@ -209,7 +209,9 @@ export const RiderView: React.FC = () => {
     ? baseRideFarePerSeat
     : baseRideFarePerSeat * calculatedSeats;
 
-  const schoolTransferFee = 20;
+  const schoolTransferFee = rideType === 'drop'
+    ? 50
+    : 10 * calculatedSeats;
   const totalDebitAmount = totalFareAmount + schoolTransferFee;
 
 
@@ -339,6 +341,14 @@ export const RiderView: React.FC = () => {
     const amt = parseFloat(topupAmount);
     if (isNaN(amt) || amt < 100) {
       showModal({ title: 'Minimum Amount', message: 'Minimum top-up amount is ₦100.', type: 'warning' });
+      return;
+    }
+    if (amt > 2000) {
+      showModal({
+        title: '₦2,000 Top-Up Cap',
+        message: 'Wallet top-ups are capped at ₦2,000 per transaction so the Paystack ₦100 flat fee stays waived. You can top up up to ₦2,000 at a time.',
+        type: 'warning'
+      });
       return;
     }
     if (!currentRider?.email) return;
@@ -881,15 +891,20 @@ export const RiderView: React.FC = () => {
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', color: '#64748b' }}>Custom Amount (₦)</label>
+                <label style={{ fontSize: '11px', color: '#64748b' }}>Custom Amount (₦100 – ₦2,000 max)</label>
                 <input 
                   type="number" 
+                  min={100}
+                  max={2000}
                   className="landmark-select-item" 
                   style={{ width: '100%', color: '#1e293b', border: '1px solid #cbd5e1', marginTop: '4px', padding: '10px' }} 
-                  placeholder="Enter amount"
+                  placeholder="Enter amount (max ₦2,000)"
                   value={topupAmount}
                   onChange={(e) => setTopupAmount(e.target.value)}
                 />
+                <div style={{ fontSize: '10px', color: '#047857', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '6px 8px', marginTop: '6px' }}>
+                  💡 Capped at <strong>₦2,000</strong> so the Paystack ₦100 fee stays waived. Funds settle to the school ledger in one daily batch.
+                </div>
               </div>
 
               {selectedCardId ? (
@@ -999,7 +1014,7 @@ export const RiderView: React.FC = () => {
 
                     <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
                       <span>Type: <strong>{t.vehicleType === 'keke' ? 'Solar Keke' : 'Campus Cab'} ({t.rideType})</strong></span>
-                      <strong style={{ color: '#1e293b' }}>₦{t.totalFare + 20}</strong>
+                      <strong style={{ color: '#1e293b' }}>₦{t.totalFare + (t.transferFee ?? (t.rideType === 'drop' ? 50 : 10 * (t.seatsBooked || 1)))}</strong>
                     </div>
                   </div>
                 ))
@@ -1341,7 +1356,10 @@ export const RiderView: React.FC = () => {
                           {vehicleType === 'keke' ? 'Up to 5 passengers' : 'Up to 4 passengers'}
                         </span>
                         <div style={{ fontSize: '15px', fontWeight: '800', marginTop: '6px', color: vehicleType === 'keke' ? 'var(--uniben-green)' : '#2563eb' }}>
-                          ₦{vehicleType === 'keke' ? '100' : '250'}
+                          ₦{vehicleType === 'keke' ? '110' : '260'} <span style={{ fontSize: '10px', fontWeight: '600', color: '#64748b' }}>/ seat</span>
+                        </div>
+                        <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>
+                          ₦{vehicleType === 'keke' ? '100' : '250'} fare + ₦10 fee
                         </div>
                       </div>
 
@@ -1353,10 +1371,13 @@ export const RiderView: React.FC = () => {
                           border: rideType === 'drop' ? `2px solid ${vehicleType === 'keke' ? 'var(--uniben-green)' : '#2563eb'}` : '1px solid #cbd5e1'
                         }}
                       >
-                        <strong style={{ display: 'block', fontSize: '13px' }}>Full Drop</strong>
-                        <span style={{ fontSize: '11px', color: '#64748b' }}>Private booking</span>
+                        <strong style={{ display: 'block', fontSize: '13px' }}>Full Ride (Drop)</strong>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>Private charter</span>
                         <div style={{ fontSize: '15px', fontWeight: '800', marginTop: '6px', color: vehicleType === 'keke' ? 'var(--uniben-green)' : '#2563eb' }}>
-                          ₦{vehicleType === 'keke' ? '500' : '1,000'}
+                          ₦{vehicleType === 'keke' ? '550' : '1,050'}
+                        </div>
+                        <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>
+                          ₦{vehicleType === 'keke' ? '500' : '1,000'} fare + ₦50 fee
                         </div>
                       </div>
                     </div>
@@ -1431,18 +1452,18 @@ export const RiderView: React.FC = () => {
                     )}
 
                     {/* Breakdown & Charges */}
-                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '8px', fontSize: '11px', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '8px', fontSize: '11px', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Base Ride Fare:</span>
+                        <span>{rideType === 'drop' ? 'Full-Ride Fare (100% to School Ledger):' : `Seat Fare (${calculatedSeats} × ₦${baseRideFarePerSeat} — 100% to School Ledger):`}</span>
                         <strong>₦{totalFareAmount.toLocaleString()}</strong>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>School Transfer Fee:</span>
-                        <strong style={{ color: '#b45309' }}>₦20</strong>
+                        <span>{rideType === 'drop' ? 'Full-Ride Service Fee:' : `Platform Service Fee (₦10 × ${calculatedSeats} ${calculatedSeats === 1 ? 'seat' : 'seats'}):`}</span>
+                        <strong style={{ color: '#b45309' }}>₦{schoolTransferFee.toLocaleString()}</strong>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1.5px dashed #cbd5e1', paddingTop: '4px', marginTop: '2px', fontSize: '12px', color: '#1e293b' }}>
-                        <span>Total Debit Amount:</span>
-                        <strong style={{ color: vehicleType === 'keke' ? 'var(--uniben-green)' : '#2563eb', fontSize: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1.5px dashed #cbd5e1', paddingTop: '5px', marginTop: '2px', fontSize: '12px', color: '#1e293b' }}>
+                        <span>Full Price to Confirm:</span>
+                        <strong style={{ color: vehicleType === 'keke' ? 'var(--uniben-green)' : '#2563eb', fontSize: '15px' }}>
                           ₦{totalDebitAmount.toLocaleString()}
                         </strong>
                       </div>
@@ -1455,7 +1476,7 @@ export const RiderView: React.FC = () => {
                         backgroundColor: vehicleType === 'keke' ? 'var(--uniben-green)' : '#2563eb'
                       }}
                     >
-                      Confirm Book {vehicleType === 'keke' ? 'USRide' : 'UCRide'}
+                      Confirm &amp; Pay ₦{totalDebitAmount.toLocaleString()} ({vehicleType === 'keke' ? 'USRide' : 'UCRide'})
                     </button>
                   </div>
                 )}

@@ -1136,6 +1136,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const bookRide = async (rideType: 'shared' | 'drop', vehicleType: 'keke' | 'cab', pickupId: string, destId: string, seatsBooked = 1) => {
     if (!currentRider) return null;
     
+    // Hackathon Fare & Settlement Rules:
+    // - Shared seat: ₦100 per seat (Keke) / ₦250 per seat (Cab) + flat ₦10 service fee per seat
+    // - Full-ride (drop): ₦500 (Keke) / ₦1,000 (Cab) + ₦50 service fee
     const baseFare = rideType === 'drop' 
       ? (vehicleType === 'keke' ? 500 : 1000) 
       : (vehicleType === 'keke' ? 100 : 250);
@@ -1145,13 +1148,15 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const totalFare = rideType === 'drop'
       ? baseFare
       : baseFare * seats;
-    const transferFee = 20;
+    const transferFee = rideType === 'drop'
+      ? 50
+      : 10 * seats;
     const totalCost = totalFare + transferFee;
 
     if (currentRider.walletBalance < totalCost) {
       showModal({
         title: "Insufficient Balance",
-        message: "❌ Insufficient wallet balance. Please top up in your wallet tab!",
+        message: `❌ Insufficient wallet balance. This ride costs ₦${totalCost.toLocaleString()} (₦${totalFare.toLocaleString()} fare + ₦${transferFee.toLocaleString()} service fee), and your wallet has ₦${currentRider.walletBalance.toLocaleString()}. Please top up in your wallet tab!`,
         type: 'error'
       });
       return null;
@@ -1506,9 +1511,10 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return nextTrips;
     });
 
-    // 3. Debit Riders & Credit Drivers
+    // 3. Debit Riders & Credit Drivers (100% of seat fare goes to school ledger; driver earnings are credited and paid out by the school)
     const fare = trip.totalFare;
-    const transferFee = trip.transferFee || 20;
+    const defaultServiceFee = trip.rideType === 'drop' ? 50 : 10 * (trip.seatsBooked || 1);
+    const transferFee = trip.transferFee ?? defaultServiceFee;
     const totalCharged = trip.totalFare + transferFee;
 
     // Debit riders — calculate updates synchronously first
@@ -1547,7 +1553,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         type: 'debit',
         amount: totalCharged,
         reference: `TRIP-FARE-${trip.id.substring(5, 12)}`,
-        description: `${trip.vehicleType === 'keke' ? 'USRide' : 'UCRide'} Fare: ${trip.pickupLandmark} ➔ ${trip.destinationLandmark} (Fee ₦${transferFee})`,
+        description: `USRide Fare: ${trip.pickupLandmark} ➔ ${trip.destinationLandmark} (₦${fare} School Ledger + ₦${transferFee} Service Fee)`,
         createdAt: new Date().toISOString()
       };
       setTransactions(prev => [riderTx, ...prev]);
@@ -1584,7 +1590,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         type: 'credit',
         amount: fare,
         reference: `EARN-TRIP-${trip.id.substring(5, 12)}`,
-        description: `Earnings: ${trip.rideType === 'drop' ? 'Drop Ride' : 'Shared Ride'}`,
+        description: `Earnings credited (paid out by the school): ${trip.rideType === 'drop' ? 'Full Ride' : `Shared (${trip.seatsBooked || 1} seat)`}`,
         createdAt: new Date().toISOString()
       };
       setTransactions(prev => [driverTx, ...prev]);

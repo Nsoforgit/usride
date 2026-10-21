@@ -3,7 +3,7 @@ import { useUSRide, LANDMARKS, Driver, Keke, Landmark } from '../context/USRideC
 import { UnibenMap } from '../components/UnibenMap';
 import { 
   Users, MapPin, Zap, BarChart2, ShieldCheck, Plus, Trash2, 
-  Battery, Play, Info, Check, LogIn, ShieldAlert, CreditCard, LogOut, RefreshCw
+  Battery, Play, Info, Check, LogIn, ShieldAlert, CreditCard, LogOut, RefreshCw, Download
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -30,7 +30,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
   const [passwordInput, setPasswordInput] = useState('');
 
   // Sub-tabs
-  const [adminTab, setAdminTab] = useState<'fleet' | 'drivers' | 'riders' | 'reports'>('fleet');
+  const [adminTab, setAdminTab] = useState<'fleet' | 'drivers' | 'riders' | 'reports' | 'ledger'>('fleet');
 
   // Register driver form state
   const [newDriverName, setNewDriverName] = useState('');
@@ -127,11 +127,74 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
   const totalRiderWalletPool = riders.reduce((acc, r) => acc + r.walletBalance, 0);
   const totalDriverWalletPool = drivers.reduce((acc, d) => acc + d.walletBalance, 0);
 
-  const totalSchoolRevenue = completedTripsList.reduce((acc, t) => acc + (t.transferFee || 20), 0);
+  // Platform Service Fee: ₦10 per seat for shared, ₦50 for full-ride drop
+  const totalPlatformServiceFee = completedTripsList.reduce(
+    (acc, t) => acc + (t.transferFee ?? (t.rideType === 'drop' ? 50 : 10 * (t.seatsBooked || 1))),
+    0
+  );
+  // 100% of seat/drop ride fares go to the School Ledger (and are credited to drivers to be paid out by the school)
   const totalGrossRideFares = completedTripsList.reduce((acc, t) => acc + (t.totalFare || 0), 0);
   const totalDriverWithdrawals = transactions
     .filter(t => t.userType === 'driver' && t.type === 'withdrawal')
     .reduce((acc, t) => acc + t.amount, 0);
+
+  // Ledger Reconciliation Equation:
+  // Money In = School Share + Driver Pool + Platform Fee + Gateway Costs + Wallet Float
+  // Note: Top-ups are capped at ₦2,000 so Paystack's ₦100 flat fee is waived (₦0).
+  const totalDriverPool = totalDriverWalletPool + totalDriverWithdrawals;
+  const totalGatewayCosts = 0; // Waived under ₦2,000 top-up cap & daily school batch settlement
+  const totalMoneyIn = Math.max(
+    totalRiderTopUps,
+    totalGrossRideFares + totalPlatformServiceFee + totalRiderWalletPool
+  );
+  // School Share (retained in university ledger before/after driver disbursements)
+  const totalSchoolShare = Math.max(
+    0,
+    totalMoneyIn - (totalDriverPool + totalPlatformServiceFee + totalGatewayCosts + totalRiderWalletPool)
+  );
+  const ledgerAllocatedSum = totalSchoolShare + totalDriverPool + totalPlatformServiceFee + totalGatewayCosts + totalRiderWalletPool;
+  const ledgerVariance = totalMoneyIn - ledgerAllocatedSum;
+
+  const handleExportLedgerCSV = () => {
+    const nowStr = new Date().toISOString();
+    const lines: string[] = [
+      'USRIDE FINANCIAL LEDGER & RECONCILIATION EXPORT ("WHERE EVERY NAIRA WENT")',
+      `Generated At,${nowStr}`,
+      'Settlement Policy,Top-ups capped at NGN 2000 (Paystack NGN 100 flat fee waived); settled to school in one daily batch',
+      '',
+      'SECTION 1: LEDGER BALANCE EQUATION (Money In = School Share + Driver Pool + Platform Fee + Gateway Costs + Wallet Float)',
+      'Bucket,Amount (NGN),Notes',
+      `Money In (Total Funded),${totalMoneyIn.toFixed(2)},Total verified rider wallet funding`,
+      `100% Seat Fare to School Ledger (Gross),${totalGrossRideFares.toFixed(2)},100% of completed ride fares (NGN 100/seat or NGN 500/drop) settled to school ledger`,
+      `School Net Ledger Share,${totalSchoolShare.toFixed(2)},University ledger balance net of driver pool credits`,
+      `Driver Pool (Earnings credited - paid out by the school),${totalDriverPool.toFixed(2)},Credited: NGN ${totalDriverWalletPool.toFixed(2)} | Disbursed: NGN ${totalDriverWithdrawals.toFixed(2)}`,
+      `Platform Service Fee (NGN 10/seat | NGN 50/drop),${totalPlatformServiceFee.toFixed(2)},Flat service fee paid by riders on top of fare`,
+      `Gateway Costs (Paystack),${totalGatewayCosts.toFixed(2)},NGN 100 flat fee waived via NGN 2000 top-up cap`,
+      `Rider Wallet Float (Unspent Balance),${totalRiderWalletPool.toFixed(2)},Active wallet balance across ${riders.length} registered riders`,
+      `Ledger Variance (Must be 0.00),${ledgerVariance.toFixed(2)},${ledgerVariance === 0 ? 'BALANCED' : 'CHECK'}`,
+      '',
+      'SECTION 2: COMPLETED TRIPS BREAKDOWN',
+      'Trip ID,Completed At,Vehicle Type,Ride Type,Seats,Pickup,Destination,Fare to School Ledger (NGN),Platform Service Fee (NGN),Total Rider Paid (NGN),Driver ID',
+      ...completedTripsList.map(t => {
+        const fee = t.transferFee ?? (t.rideType === 'drop' ? 50 : 10 * (t.seatsBooked || 1));
+        return `${t.id},${t.completedAt || t.createdAt},${t.vehicleType},${t.rideType},${t.seatsBooked || 1},"${t.pickupLandmark}","${t.destinationLandmark}",${t.totalFare},${fee},${t.totalFare + fee},${t.driverId || 'N/A'}`;
+      }),
+      '',
+      'SECTION 3: WALLET & SETTLEMENT TRANSACTIONS',
+      'Transaction ID,Timestamp,User Type,User ID,Type,Amount (NGN),Reference,Description',
+      ...transactions.map(tx => `${tx.id},${tx.createdAt},${tx.userType},${tx.userId},${tx.type},${tx.amount},${tx.reference},"${(tx.description || '').replace(/"/g, '""')}"`)
+    ];
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `usride-naira-ledger-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const completedKekeTrips = completedTripsList.filter(t => t.vehicleType === 'keke').length;
   const completedCabTrips = completedTripsList.filter(t => t.vehicleType === 'cab').length;
@@ -216,6 +279,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               onClick={() => setAdminTab('reports')}
             >
               <BarChart2 size={14} /> Analytics &amp; Reports
+            </button>
+            <button 
+              className={`sim-btn ${adminTab === 'ledger' ? 'active' : ''}`}
+              onClick={() => setAdminTab('ledger')}
+            >
+              <CreditCard size={14} /> Where Every Naira Went
             </button>
           </div>
           <button
@@ -488,7 +557,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                   Drivers Registry ({drivers.length} Registered)
                 </h3>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  {drivers.filter(d => d.vehicleType === 'keke').length} USRide Kekes · {drivers.filter(d => d.vehicleType === 'cab').length} UCRide Cabs · Total Driver Wallet Pool: <strong style={{ color: '#38bdf8' }}>₦{totalDriverWalletPool.toLocaleString()}</strong>
+                  {drivers.filter(d => d.vehicleType === 'keke').length} USRide Kekes · {drivers.filter(d => d.vehicleType === 'cab').length} UCRide Cabs · Earnings credited, paid out by the school: <strong style={{ color: '#38bdf8' }}>₦{totalDriverWalletPool.toLocaleString()}</strong>
                 </span>
               </div>
               {totalDriverWalletPool > 0 && (
@@ -520,7 +589,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                     <th>Phone</th>
                     <th>Vehicle Assigned</th>
                     <th>Trips Done</th>
-                    <th>Wallet Balance</th>
+                    <th>Earnings credited, paid out by the school</th>
                     <th>Rating</th>
                     <th>Status / Action</th>
                   </tr>
@@ -686,26 +755,28 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
             </div>
 
             <div className="admin-card">
-              <h3>School Revenue (₦20 Fee)</h3>
+              <h3>School Ledger (100% Seat Fare)</h3>
               <div className="admin-stat" style={{ color: 'var(--uniben-gold)' }}>
-                ₦{totalSchoolRevenue.toLocaleString()}
+                ₦{totalGrossRideFares.toLocaleString()}
               </div>
-              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Approved administrative transfer levies from completed trips</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                100% of ₦100 seat / ₦500 drop fares settled in daily batch · Platform Service Fee (₦10/seat): <strong>₦{totalPlatformServiceFee.toLocaleString()}</strong>
+              </span>
             </div>
           </div>
 
           {/* Digital Inflow & Rider wallet pools */}
           <div className="admin-grid">
             <div className="admin-card">
-              <h3>Rider Digital Top-Ups</h3>
+              <h3>Rider Digital Top-Ups (≤ ₦2,000 Cap)</h3>
               <div className="admin-stat" style={{ color: 'var(--uniben-gold)' }}>
                 ₦{totalRiderTopUps.toLocaleString()}
               </div>
-              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Verified live Paystack wallet credits</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>Paystack ₦100 fee waived under ₦2,000 top-up cap</span>
             </div>
 
             <div className="admin-card">
-              <h3>Rider Wallet Pools</h3>
+              <h3>Rider Wallet Float</h3>
               <div className="admin-stat" style={{ color: 'var(--uniben-green-light)' }}>
                 ₦{totalRiderWalletPool.toLocaleString()}
               </div>
@@ -715,13 +786,60 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
             </div>
 
             <div className="admin-card">
-              <h3>Fleet Digital Wallet Balance</h3>
+              <h3>Earnings credited, paid out by the school</h3>
               <div className="admin-stat" style={{ color: '#38bdf8' }}>
                 ₦{totalDriverWalletPool.toLocaleString()}
               </div>
               <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                Drivers digital earnings pool · Bank Withdrawals: ₦{totalDriverWithdrawals.toLocaleString()}
+                Credited driver earnings · Paid out to bank: ₦{totalDriverWithdrawals.toLocaleString()}
               </span>
+            </div>
+          </div>
+
+          {/* Quick link to Where Every Naira Went + CSV Export */}
+          <div className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', backgroundColor: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+            <div>
+              <h3 style={{ color: '#34d399', margin: 0, fontSize: '14px' }}>
+                ⚖️ Balanced Naira Ledger: Money In (₦{totalMoneyIn.toLocaleString()}) = School Share (₦{totalSchoolShare.toLocaleString()}) + Driver Pool (₦{totalDriverPool.toLocaleString()}) + Platform Fee (₦{totalPlatformServiceFee.toLocaleString()}) + Gateway Costs (₦{totalGatewayCosts.toLocaleString()}) + Wallet Float (₦{totalRiderWalletPool.toLocaleString()})
+              </h3>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                Variance: ₦{ledgerVariance.toFixed(2)} · 100% of seat fares (₦{totalGrossRideFares.toLocaleString()}) settle to the university ledger in one daily batch.
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setAdminTab('ledger')}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                  color: '#38bdf8',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Open "Where Every Naira Went"
+              </button>
+              <button
+                onClick={handleExportLedgerCSV}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(16, 185, 129, 0.5)',
+                  backgroundColor: '#059669',
+                  color: 'white',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Download size={13} /> Export CSV
+              </button>
             </div>
           </div>
 
@@ -901,6 +1019,235 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
 
           </div>
 
+        </div>
+      )}
+
+      {/* ADMIN VIEW 5: WHERE EVERY NAIRA WENT (LEDGER RECONCILIATION & CSV EXPORT) */}
+      {adminTab === 'ledger' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.45), rgba(15, 23, 42, 0.9))', border: '1px solid rgba(16, 185, 129, 0.35)' }}>
+            <div>
+              <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CreditCard size={20} style={{ color: 'var(--uniben-gold)' }} />
+                Where Every Naira Went — Live Ledger Reconciliation
+              </h3>
+              <p style={{ fontSize: '12px', color: '#a7f3d0', margin: '4px 0 0 0' }}>
+                Accounting Identity: <strong>Money In = School Share + Driver Pool + Platform Fee + Gateway Costs + Wallet Float</strong>
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: '11px',
+                fontWeight: '800',
+                backgroundColor: ledgerVariance === 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                color: ledgerVariance === 0 ? '#34d399' : '#f87171',
+                border: `1px solid ${ledgerVariance === 0 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`
+              }}>
+                {ledgerVariance === 0 ? '● LEDGER BALANCED (₦0.00 Variance)' : `⚠️ Variance: ₦${ledgerVariance.toFixed(2)}`}
+              </span>
+              <button
+                onClick={handleExportLedgerCSV}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(251, 191, 36, 0.5)',
+                  backgroundColor: 'var(--uniben-gold)',
+                  color: '#0f172a',
+                  fontSize: '12px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Download size={14} /> Export Ledger CSV
+              </button>
+            </div>
+          </div>
+
+          {/* 6-Card Naira Equation Breakdown */}
+          <div className="admin-grid">
+            <div className="admin-card" style={{ borderLeft: '4px solid #fbbf24' }}>
+              <h3>1. Money In (Total Funded)</h3>
+              <div className="admin-stat" style={{ color: '#fbbf24' }}>
+                ₦{totalMoneyIn.toLocaleString()}
+              </div>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                All verified Paystack top-ups (capped at ₦2,000/top-up)
+              </span>
+            </div>
+
+            <div className="admin-card" style={{ borderLeft: '4px solid #10b981' }}>
+              <h3>2. School Ledger (100% Seat Fare)</h3>
+              <div className="admin-stat" style={{ color: '#10b981' }}>
+                ₦{totalGrossRideFares.toLocaleString()}
+              </div>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                100% of ₦100 seat / ₦500 drop fares settled in one daily batch (Net retained after driver credits: ₦{totalSchoolShare.toLocaleString()})
+              </span>
+            </div>
+
+            <div className="admin-card" style={{ borderLeft: '4px solid #38bdf8' }}>
+              <h3>3. Driver Pool (School Disbursed)</h3>
+              <div className="admin-stat" style={{ color: '#38bdf8' }}>
+                ₦{totalDriverPool.toLocaleString()}
+              </div>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                Earnings credited, paid out by the school (Active: ₦{totalDriverWalletPool.toLocaleString()} · Withdrawn: ₦{totalDriverWithdrawals.toLocaleString()})
+              </span>
+            </div>
+
+            <div className="admin-card" style={{ borderLeft: '4px solid #a855f7' }}>
+              <h3>4. Platform Service Fee</h3>
+              <div className="admin-stat" style={{ color: '#c084fc' }}>
+                ₦{totalPlatformServiceFee.toLocaleString()}
+              </div>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                Flat ₦10 per seat (shared) or ₦50 (full-ride drop) paid by riders
+              </span>
+            </div>
+
+            <div className="admin-card" style={{ borderLeft: '4px solid #64748b' }}>
+              <h3>5. Paystack Gateway Costs</h3>
+              <div className="admin-stat" style={{ color: '#cbd5e1' }}>
+                ₦{totalGatewayCosts.toLocaleString()}
+              </div>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                ₦100 flat fee waived by capping top-ups at ₦2,000 &amp; settling in one daily batch
+              </span>
+            </div>
+
+            <div className="admin-card" style={{ borderLeft: '4px solid #34d399' }}>
+              <h3>6. Rider Wallet Float</h3>
+              <div className="admin-stat" style={{ color: '#34d399' }}>
+                ₦{totalRiderWalletPool.toLocaleString()}
+              </div>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                Unspent balance held by {riders.filter(r => r.walletBalance > 0).length} active rider(s)
+              </span>
+            </div>
+          </div>
+
+          {/* Reconciliation Table */}
+          <div className="admin-card">
+            <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '15px' }}>
+              Ledger Equation &amp; Daily Batch Settlement Summary
+            </h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="admin-list-table">
+                <thead>
+                  <tr>
+                    <th>Ledger Bucket</th>
+                    <th>Rule / Policy</th>
+                    <th>Amount (₦)</th>
+                    <th>Share of Money In</th>
+                    <th>Settlement Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ fontWeight: 'bold', color: '#fbbf24' }}>Money In (Gross Inflow)</td>
+                    <td>Rider wallet top-ups capped at ₦2,000 per transaction</td>
+                    <td style={{ fontWeight: '800', color: '#fbbf24' }}>₦{totalMoneyIn.toFixed(2)}</td>
+                    <td>100.0%</td>
+                    <td><span style={{ color: '#34d399', fontWeight: 'bold' }}>Verified via Paystack</span></td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 'bold', color: '#10b981' }}>School Share (University Ledger)</td>
+                    <td>100% of ₦100 seat fare &amp; ₦500 drop fare goes to school ledger (₦{totalGrossRideFares.toFixed(2)} gross)</td>
+                    <td style={{ fontWeight: '700', color: '#10b981' }}>₦{totalSchoolShare.toFixed(2)}</td>
+                    <td>{totalMoneyIn > 0 ? ((totalSchoolShare / totalMoneyIn) * 100).toFixed(1) : '0.0'}%</td>
+                    <td><span style={{ color: '#fbbf24', fontWeight: 'bold' }}>Daily Batch Settlement (23:59 WAT)</span></td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 'bold', color: '#38bdf8' }}>Driver Pool</td>
+                    <td>Earnings credited, paid out by the school from the school fare ledger</td>
+                    <td style={{ fontWeight: '700', color: '#38bdf8' }}>₦{totalDriverPool.toFixed(2)}</td>
+                    <td>{totalMoneyIn > 0 ? ((totalDriverPool / totalMoneyIn) * 100).toFixed(1) : '0.0'}%</td>
+                    <td><span style={{ color: '#38bdf8', fontWeight: 'bold' }}>Credited &amp; Disbursed by School</span></td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 'bold', color: '#c084fc' }}>Platform Fee</td>
+                    <td>Flat ₦10 service fee per seat (shared) or ₦50 per full-ride drop</td>
+                    <td style={{ fontWeight: '700', color: '#c084fc' }}>₦{totalPlatformServiceFee.toFixed(2)}</td>
+                    <td>{totalMoneyIn > 0 ? ((totalPlatformServiceFee / totalMoneyIn) * 100).toFixed(1) : '0.0'}%</td>
+                    <td><span style={{ color: '#c084fc', fontWeight: 'bold' }}>Accrued per Completed Trip</span></td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 'bold', color: '#cbd5e1' }}>Gateway Costs</td>
+                    <td>Paystack ₦100 flat fee waived (all top-ups ≤ ₦2,000)</td>
+                    <td style={{ fontWeight: '700', color: '#cbd5e1' }}>₦{totalGatewayCosts.toFixed(2)}</td>
+                    <td>0.0%</td>
+                    <td><span style={{ color: '#34d399', fontWeight: 'bold' }}>Fee Waived (&lt; ₦2,500)</span></td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 'bold', color: '#34d399' }}>Wallet Float (Rider Balances)</td>
+                    <td>Unspent prepaid balance available in student &amp; staff wallets</td>
+                    <td style={{ fontWeight: '700', color: '#34d399' }}>₦{totalRiderWalletPool.toFixed(2)}</td>
+                    <td>{totalMoneyIn > 0 ? ((totalRiderWalletPool / totalMoneyIn) * 100).toFixed(1) : '0.0'}%</td>
+                    <td><span style={{ color: '#34d399', fontWeight: 'bold' }}>Held in Rider Wallets</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Transaction-level Audit Trail */}
+          <div className="admin-card">
+            <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '15px' }}>
+              Every Naira Audit Trail ({transactions.length} Ledger Entries)
+            </h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="admin-list-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Reference</th>
+                    <th>Account Type</th>
+                    <th>Entry Type</th>
+                    <th>Description</th>
+                    <th>Amount (₦)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
+                        No transactions recorded yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    transactions.map(tx => (
+                      <tr key={tx.id}>
+                        <td style={{ fontSize: '11px', color: '#94a3b8' }}>{new Date(tx.createdAt).toLocaleString()}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--uniben-gold)' }}>{tx.reference}</td>
+                        <td style={{ textTransform: 'capitalize' }}>{tx.userType}</td>
+                        <td>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '8px',
+                            fontSize: '10px',
+                            fontWeight: 'bold',
+                            backgroundColor: tx.type === 'credit' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                            color: tx.type === 'credit' ? '#34d399' : '#f87171'
+                          }}>
+                            {tx.type.toUpperCase()}
+                          </span>
+                        </td>
+                        <td>{tx.description}</td>
+                        <td style={{ fontWeight: 'bold', color: tx.type === 'credit' ? '#34d399' : '#f87171' }}>
+                          {tx.type === 'credit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

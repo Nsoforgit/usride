@@ -377,7 +377,7 @@ export const DriverView: React.FC = () => {
               style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.6)' }}
             />
           </button>
-          <button onClick={() => setDriverStep('earnings')} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }} title="Earnings">
+          <button onClick={() => setDriverStep('earnings')} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }} title="Earnings credited, paid out by the school">
             <Wallet size={18} />
           </button>
           <button 
@@ -731,16 +731,19 @@ export const DriverView: React.FC = () => {
         {driverStep === 'earnings' && (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: '#f8fafc', height: '100%', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifySelf: 'stretch', justifyContent: 'space-between' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '700' }}>My Earnings</h3>
+              <h3 style={{ fontSize: '15px', fontWeight: '700' }}>Earnings credited, paid out by the school</h3>
               <button onClick={() => setDriverStep('idle')} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} /></button>
             </div>
 
             <div className="energy-status-widget" style={{ background: 'linear-gradient(135deg, var(--uniben-green-dark), #064e3b)', padding: '20px', borderRadius: '18px' }}>
-              <span style={{ fontSize: '12px', textTransform: 'uppercase', opacity: 0.8 }}>Available Earnings Balance</span>
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.9, fontWeight: '700' }}>Earnings credited, paid out by the school</span>
               <div style={{ fontSize: '32px', fontWeight: '800', marginTop: '4px' }}>
                 ₦{currentDriver.walletBalance.toLocaleString()}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', fontSize: '11px', opacity: 0.8 }}>
+              <div style={{ fontSize: '10px', opacity: 0.85, marginTop: '4px' }}>
+                100% of seat fares settle to the university ledger daily and are disbursed to drivers.
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', fontSize: '11px', opacity: 0.8 }}>
                 <span>Trips Done: {currentDriver.totalTrips}</span>
                 <span>Rating: ★{currentDriver.averageRating}</span>
               </div>
@@ -1020,9 +1023,11 @@ export const DriverView: React.FC = () => {
                       </button>
                     </div>
 
-                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
+                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', flexWrap: 'wrap', gap: '4px' }}>
                       <span>Seats Left: <strong>{currentKeke.currentSeatsAvailable}/{currentKeke.vehicleType === 'keke' ? 5 : 4}</strong></span>
-                      <span>Wallet: <strong>₦{currentDriver.walletBalance}</strong></span>
+                      <span onClick={() => setDriverStep('earnings')} style={{ cursor: 'pointer', color: '#047857' }}>
+                        Earnings credited, paid out by the school: <strong>₦{currentDriver.walletBalance.toLocaleString()}</strong>
+                      </span>
                     </div>
 
                     {/* Live GPS Location Pill */}
