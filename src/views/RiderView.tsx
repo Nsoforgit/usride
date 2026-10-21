@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUSRide, LANDMARKS, Keke, Trip, Landmark } from '../context/USRideContext';
 import { UnibenMap } from '../components/UnibenMap';
 import { LocationPickerModal } from '../components/LocationPickerModal';
-import { calculateETA, snapCoordinatesToNearestLandmark, getDistanceMeters } from '../utils/geofence';
+import { calculateETA, snapCoordinatesToNearestLandmark, getDistanceMeters, getTripBoardingCode } from '../utils/geofence';
 import { synthSound } from '../utils/audio';
 import { useUserLocation } from '../hooks/useUserLocation';
 import { supabase } from '../lib/supabase';
@@ -10,7 +10,7 @@ import { dbToTrip } from '../lib/db';
 import { 
   Wallet, MapPin, Navigation, User, LogOut, ArrowRight, ShieldAlert,
   Star, CreditCard, RefreshCw, X, CheckCircle, Clock, Battery, Trash2, History,
-  Eye, EyeOff
+  Eye, EyeOff, QrCode, AlertTriangle
 } from 'lucide-react';
 
 export const RiderView: React.FC = () => {
@@ -29,7 +29,9 @@ export const RiderView: React.FC = () => {
     trips,
     kekes,
     transactions,
+    confirmBoarded,
     completeTrip,
+    raiseTripDispute,
     triggerSOSAlert,
     showModal,
     updateRiderProfile
@@ -81,9 +83,10 @@ export const RiderView: React.FC = () => {
   const [isProcessingTopup, setIsProcessingTopup] = useState(false);
   const [topupSuccess, setTopupSuccess] = useState(false);
   
-  // Rating states
+  // Rating & Boarding states
   const [ratingStars, setRatingStars] = useState(5);
   const [feedback, setFeedback] = useState('');
+  const [boardingCodeInput, setBoardingCodeInput] = useState('');
 
   // 1. Keep track of active trip for current rider
   useEffect(() => {
@@ -605,7 +608,7 @@ export const RiderView: React.FC = () => {
             title="My Profile"
           >
             <img 
-              src={currentRider.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'} 
+              src={currentRider.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentRider.name)}&background=047857&color=fff&bold=true`} 
               alt="Profile"
               style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.6)' }}
             />
@@ -635,7 +638,7 @@ export const RiderView: React.FC = () => {
             
             <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '20px' }}>
               <img 
-                src={editPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'} 
+                src={editPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentRider.name)}&background=047857&color=fff&bold=true`} 
                 alt="Profile Preview"
                 style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--uniben-green)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
               />
@@ -677,7 +680,7 @@ export const RiderView: React.FC = () => {
                 <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Profile Photo</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <img
-                    src={editPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'}
+                    src={editPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentRider.name)}&background=047857&color=fff&bold=true`}
                     alt="Preview"
                     style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--uniben-purple)', flexShrink: 0 }}
                   />
@@ -1016,6 +1019,49 @@ export const RiderView: React.FC = () => {
                       <span>Type: <strong>{t.vehicleType === 'keke' ? 'Solar Keke' : 'Campus Cab'} ({t.rideType})</strong></span>
                       <strong style={{ color: '#1e293b' }}>₦{t.totalFare + (t.transferFee ?? (t.rideType === 'drop' ? 50 : 10 * (t.seatsBooked || 1)))}</strong>
                     </div>
+
+                    {t.status === 'completed' && (
+                      (() => {
+                        const completedTimeMs = new Date(t.completedAt || t.createdAt).getTime();
+                        const within24h = Date.now() - completedTimeMs <= 24 * 60 * 60 * 1000;
+                        const hoursRemaining = Math.max(0, Math.ceil((completedTimeMs + 24 * 60 * 60 * 1000 - Date.now()) / (60 * 60 * 1000)));
+                        return (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid #f1f5f9' }}>
+                            <span style={{ fontSize: '9px', color: within24h ? '#047857' : '#94a3b8', fontWeight: '600' }}>
+                              {within24h ? `🛡️ 24h Dispute Window Open (${hoursRemaining}h left)` : '🔒 24h Dispute Window Closed'}
+                            </span>
+                            {within24h && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  showModal({
+                                    title: '⚖️ Raise Trip Dispute (24h Window)',
+                                    message: `Report a fare or service issue for trip ${t.pickupLandmark} ➔ ${t.destinationLandmark}:`,
+                                    type: 'warning',
+                                    inputPlaceholder: 'Describe the issue (e.g., overcharge, wrong drop-off)...',
+                                    onInputSubmit: (reason) => {
+                                      raiseTripDispute(t.id, reason);
+                                    }
+                                  });
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #f59e0b',
+                                  backgroundColor: '#fffbeb',
+                                  color: '#b45309',
+                                  fontSize: '10px',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                ⚖️ Raise Dispute
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
                   </div>
                 ))
               )}
@@ -1165,7 +1211,7 @@ export const RiderView: React.FC = () => {
                 {bookingStep === 'idle' && (
                   <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#64748b', fontWeight: 'bold' }}>UNIBEN Transit</div>
+                      <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#64748b', fontWeight: 'bold' }}>USRide Campus Transit</div>
                       <span className="app-notification" style={{ margin: 0, padding: '2px 8px', fontSize: '10px' }}>
                         {onlineKekes} {onlineKekes === 1 ? 'Keke' : 'Kekes'} • {onlineCabs} {onlineCabs === 1 ? 'Cab' : 'Cabs'}
                       </span>
@@ -1203,7 +1249,7 @@ export const RiderView: React.FC = () => {
                     )}
                     
                     <button className="primary-btn" style={{ width: '100%', marginTop: '4px' }} onClick={startBooking}>
-                      <Navigation size={16} /> Book Uniben Smart Ride
+                      <Navigation size={16} /> Book USRide
                     </button>
                   </div>
                 )}
@@ -1517,14 +1563,14 @@ export const RiderView: React.FC = () => {
                         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                           {selectedKeke.vehicleType === 'keke' ? (
                             <>
-                              <span style={{ fontSize: '10px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                <Battery size={12} style={{ color: '#10b981' }} /> {selectedKeke.currentBatteryPercent}%
+                              <span style={{ fontSize: '10px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '2px' }} title="Field-calibrated estimate (~1% per km)">
+                                <Battery size={12} style={{ color: '#10b981' }} /> {selectedKeke.currentBatteryPercent}% · Calibrated est.
                               </span>
                             </>
                           ) : (
                             <>
                               <span style={{ fontSize: '10px', color: '#2563eb', fontWeight: 'bold' }}>
-                                🚗 UCRide Cab
+                                🚗 USRide Cab
                               </span>
                             </>
                           )}
@@ -1548,7 +1594,7 @@ export const RiderView: React.FC = () => {
                             border: '1px solid #e2e8f0'
                           }}>
                             <img 
-                              src={matchedDriver.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'} 
+                              src={matchedDriver.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(matchedDriver.name)}&background=064e3b&color=fff&bold=true`} 
                               alt={matchedDriver.name}
                               style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #cbd5e1' }}
                             />
@@ -1604,14 +1650,95 @@ export const RiderView: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Boarding Check (Code/QR + 50m Proximity) when Driver Accepted */}
+                    {activeTrip.status === 'accepted' && (
+                      (() => {
+                        const expectedCode = getTripBoardingCode(activeTrip.id);
+                        const distToPickup = selectedKeke
+                          ? Math.round(getDistanceMeters(selectedKeke.lat, selectedKeke.lng, activeTrip.pickupLocation.lat, activeTrip.pickupLocation.lng))
+                          : 0;
+                        const isWithin50m = distToPickup <= 50;
+                        return (
+                          <div style={{
+                            backgroundColor: '#f0fdf4',
+                            border: '1.5px dashed #059669',
+                            borderRadius: '10px',
+                            padding: '10px 12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontSize: '10px', fontWeight: '800', color: '#065f46', textTransform: 'uppercase' }}>
+                                  🎫 Boarding Check (4-Digit Code / QR)
+                                </div>
+                                <div style={{ fontSize: '9px', color: isWithin50m ? '#059669' : '#b45309', fontWeight: '700', marginTop: '2px' }}>
+                                  {isWithin50m
+                                    ? `✓ Proximity Verified (${distToPickup}m ≤ 50m)`
+                                    : `📍 Driver ${distToPickup}m away (Verify ≤ 50m + Code ${expectedCode})`}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBoardingCodeInput(expectedCode);
+                                  confirmBoarded(activeTrip.id, expectedCode);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #059669',
+                                  backgroundColor: 'white',
+                                  color: '#064e3b',
+                                  fontSize: '10px',
+                                  fontWeight: '800',
+                                  cursor: 'pointer'
+                                }}
+                                title="Scan Driver QR Code"
+                              >
+                                <QrCode size={13} /> Scan QR ({expectedCode})
+                              </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <input
+                                type="text"
+                                maxLength={4}
+                                placeholder={`Enter driver 4-digit code (${expectedCode})`}
+                                value={boardingCodeInput}
+                                onChange={(e) => setBoardingCodeInput(e.target.value.replace(/\D/g, ''))}
+                                className="landmark-select-item"
+                                style={{ flex: 1, padding: '7px 10px', fontSize: '12px', fontWeight: '700', letterSpacing: '2px', border: '1px solid #a7f3d0', backgroundColor: 'white' }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => confirmBoarded(activeTrip.id, boardingCodeInput || expectedCode)}
+                                className="primary-btn"
+                                style={{ padding: '7px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                              >
+                                Confirm Boarding
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    )}
+
                     <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Total Charge: <strong>₦{activeTrip.totalFare + 20}</strong> (incl. ₦20 fee)</span>
-                      <button 
-                        onClick={() => completeTrip(activeTrip.id)}
-                        style={{ border: 'none', background: 'none', color: activeTrip.vehicleType === 'keke' ? 'var(--uniben-green-light)' : '#3b82f6', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold' }}
-                      >
-                        (Simulate Arrived)
-                      </button>
+                      <span>
+                        Total Charge: <strong>₦{activeTrip.totalFare + (activeTrip.transferFee ?? (activeTrip.rideType === 'drop' ? 50 : 10 * (activeTrip.seatsBooked || 1)))}</strong> (incl. ₦{activeTrip.transferFee ?? (activeTrip.rideType === 'drop' ? 50 : 10 * (activeTrip.seatsBooked || 1))} fee)
+                      </span>
+                      {activeTrip.status === 'active' && (
+                        <button 
+                          onClick={() => completeTrip(activeTrip.id)}
+                          style={{ border: 'none', background: 'none', color: activeTrip.vehicleType === 'keke' ? 'var(--uniben-green-light)' : '#3b82f6', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold' }}
+                        >
+                          (Complete Ride)
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

@@ -8,26 +8,36 @@ import type { Rider, Driver, Keke, Trip, WalletTransaction, SafetyIncident, Save
 
 // ─── Type helpers (DB row → app model) ───────────────────────────────────────
 
+function sanitizeAvatarUrl(name: string, photo?: string, bg = '064e3b', color = 'fbbf24'): string {
+  if (photo && !photo.includes('images.unsplash.com')) {
+    return photo;
+  }
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'USRide')}&background=${bg}&color=${color}&bold=true&size=150`;
+}
+
 export function dbToRider(row: Record<string, unknown>, cards: SavedCard[] = [], passwordHash?: string): Rider {
+  const name = (row.name as string) || 'Rider';
   return {
     id: row.id as string,
-    name: row.name as string,
+    name,
     email: row.email as string,
     role: row.role as 'student' | 'staff' | 'other',
     phoneNumber: (row.phone_number as string) ?? '',
     walletBalance: Number(row.wallet_balance),
     totalTrips: Number(row.total_trips),
     averageRating: Number(row.average_rating),
-    photo: row.photo as string | undefined,
+    photo: sanitizeAvatarUrl(name, row.photo as string | undefined, '4c1d95', 'fde68a'),
     savedCards: cards,
     passwordHash: passwordHash ?? (row.password as string | undefined),
   };
 }
 
 export function dbToDriver(row: Record<string, unknown>, passwordHash?: string): Driver {
+  const name = (row.name as string) || 'Driver';
+  const vType = (row.vehicle_type as 'keke' | 'cab') || 'keke';
   return {
     id: row.id as string,
-    name: row.name as string,
+    name,
     email: row.email as string,
     driverIdCode: row.driver_id_code as string,
     kekeId: Number(row.vehicle_id),
@@ -35,10 +45,10 @@ export function dbToDriver(row: Record<string, unknown>, passwordHash?: string):
     totalTrips: Number(row.total_trips),
     averageRating: Number(row.average_rating),
     isActive: Boolean(row.is_active),
-    vehicleType: row.vehicle_type as 'keke' | 'cab',
+    vehicleType: vType,
     petrolCostToday: Number(row.petrol_cost_today ?? 0),
     cashCollectedToday: Number(row.cash_collected_today ?? 0),
-    photo: row.photo as string | undefined,
+    photo: sanitizeAvatarUrl(name, row.photo as string | undefined, vType === 'keke' ? '064e3b' : '1e3a8a', 'fbbf24'),
     vehicleModel: row.vehicle_model as string | undefined,
     vehicleColor: row.vehicle_color as string | undefined,
     queuedTripId: (row.queued_trip_id as string | null) ?? null,

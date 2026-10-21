@@ -42,11 +42,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 4px 12px rgba(91,33,182,0.3)'
           }}>
-            <span style={{ color: '#F59E0B', fontWeight: '900', fontSize: '15px' }}>UR</span>
+            <span style={{ color: '#F59E0B', fontWeight: '900', fontSize: '15px' }}>US</span>
           </div>
           <div>
-            <div style={{ fontWeight: '800', fontSize: '16px', color: '#5B21B6', lineHeight: 1 }}>UNIBEN Ride</div>
-            <div style={{ fontSize: '10px', color: '#9CA3AF', letterSpacing: '0.5px' }}>Campus Transport</div>
+            <div style={{ fontWeight: '800', fontSize: '16px', color: '#5B21B6', lineHeight: 1 }}>USRide</div>
+            <div style={{ fontSize: '10px', color: '#9CA3AF', letterSpacing: '0.5px' }}>UNIBEN Smart Campus Mobility</div>
           </div>
         </div>
 
@@ -86,8 +86,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
           marginBottom: '16px',
           letterSpacing: '-1px'
         }}>
-          UNIBEN<br />
-          <span style={{ color: '#5B21B6' }}>Ride</span>
+          US<span style={{ color: '#5B21B6' }}>Ride</span>
         </h1>
 
         <p className="landing-hero-text" style={{
@@ -160,7 +159,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
             </div>
           </div>
 
-          {/* UCRide Card */}
+          {/* USRide Cab Card */}
           <div style={{
             flex: 1, borderRadius: '20px', padding: '24px 20px',
             background: 'linear-gradient(145deg, #F59E0B, #D97706)',
@@ -168,14 +167,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
             cursor: 'pointer', transition: 'transform 0.2s'
           }} onClick={onGetRide}>
             <div style={{ fontSize: '36px', marginBottom: '12px' }}>🚗</div>
-            <div style={{ fontWeight: '900', fontSize: '20px', marginBottom: '4px' }}>UCRide</div>
+            <div style={{ fontWeight: '900', fontSize: '20px', marginBottom: '4px' }}>USRide Cab</div>
             <div style={{ fontSize: '12px', opacity: 0.85, marginBottom: '12px' }}>Campus Cab</div>
             <div style={{
               backgroundColor: 'rgba(255,255,255,0.25)',
               borderRadius: '50px', padding: '4px 10px',
               display: 'inline-block', fontSize: '11px', fontWeight: '700', color: '#fff'
             }}>
-              🚀 Premium Comfort
+              🚀 Chartered &amp; Shared
             </div>
           </div>
         </div>
@@ -259,9 +258,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetRide, onBeDriver,
         borderTop: '1px solid #f3f0ff',
         backgroundColor: '#fff'
       }}>
-        <div style={{ fontWeight: '800', color: '#5B21B6', marginBottom: '4px' }}>UNIBEN Ride</div>
+        <div style={{ fontWeight: '800', color: '#5B21B6', marginBottom: '4px' }}>USRide</div>
         <div style={{ fontSize: '11px', color: '#9CA3AF' }}>
-          © 2025 University of Benin Smart Transport Platform
+          © 2026 USRide — University of Benin Smart Campus Mobility Platform
         </div>
       </footer>
 

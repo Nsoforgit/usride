@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { useUSRide, LANDMARKS, Driver, Keke, Landmark } from '../context/USRideContext';
+import { useUSRide, LANDMARKS, Driver, Keke, Landmark, PRELOADED_DRIVER_IDS, PRELOADED_RIDER_IDS } from '../context/USRideContext';
 import { UnibenMap } from '../components/UnibenMap';
 import { 
   Users, MapPin, Zap, BarChart2, ShieldCheck, Plus, Trash2, 
-  Battery, Play, Info, Check, LogIn, ShieldAlert, CreditCard, LogOut, RefreshCw, Download
+  Battery, Play, Info, Check, LogIn, ShieldAlert, CreditCard, LogOut, RefreshCw, Download, Eye, EyeOff, Lock
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -19,6 +19,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
     transactions,
     adminRegisterDriver,
     safetyIncidents,
+    adminAuditLogs,
+    logAdminAction,
     showModal,
     resetSimulatorDatabase,
     clearDriverFloatingBalances,
@@ -31,6 +33,28 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
 
   // Sub-tabs
   const [adminTab, setAdminTab] = useState<'fleet' | 'drivers' | 'riders' | 'reports' | 'ledger'>('fleet');
+
+  // Data Filter: Separate Real Pilot Data from Preloaded Demo Fleet
+  const [dataFilterMode, setDataFilterMode] = useState<'all' | 'pilot-only'>('all');
+
+  // Phone number privacy masking: track revealed phone IDs
+  const [revealedPhones, setRevealedPhones] = useState<Record<string, boolean>>({});
+
+  const maskPhoneNumber = (phone?: string) => {
+    if (!phone) return 'N/A';
+    const clean = phone.trim();
+    if (clean.length < 7) return '***';
+    return `${clean.slice(0, 4)}***${clean.slice(-4)}`;
+  };
+
+  const toggleRevealPhone = (key: string, label: string, phone?: string) => {
+    if (!phone) return;
+    const willReveal = !revealedPhones[key];
+    setRevealedPhones(prev => ({ ...prev, [key]: willReveal }));
+    if (willReveal) {
+      logAdminAction('REVEAL_PHONE', `Admin revealed masked phone number for ${label}`);
+    }
+  };
 
   // Register driver form state
   const [newDriverName, setNewDriverName] = useState('');
@@ -49,7 +73,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
     e.preventDefault();
     if (passwordInput === 'admin123') {
       setIsAdminLoggedIn(true);
+      logAdminAction('ADMIN_LOGIN', 'Administrator signed in to USRide Admin console');
     } else {
+      logAdminAction('ADMIN_LOGIN_FAILED', 'Failed administrator password attempt');
       showModal({
         title: "Access Denied",
         message: "Invalid administrator password! (Hint: use admin123)",
@@ -196,6 +222,20 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
     URL.revokeObjectURL(url);
   };
 
+  // Separate Real Pilot vs Preloaded Demo Accounts
+  const isPilotDriver = (d: Driver) =>
+    !PRELOADED_DRIVER_IDS.has(d.id) || d.totalTrips > 0 || d.walletBalance > 0;
+  const isPilotRider = (r: { id: string; totalTrips: number; walletBalance: number }) =>
+    !PRELOADED_RIDER_IDS.has(r.id) || r.totalTrips > 0 || r.walletBalance > 0;
+
+  const pilotDriversCount = drivers.filter(isPilotDriver).length;
+  const preloadedDriversCount = drivers.length - pilotDriversCount;
+  const pilotRidersCount = riders.filter(isPilotRider).length;
+  const preloadedRidersCount = riders.length - pilotRidersCount;
+
+  const displayedDrivers = dataFilterMode === 'pilot-only' ? drivers.filter(isPilotDriver) : drivers;
+  const displayedRiders = dataFilterMode === 'pilot-only' ? riders.filter(isPilotRider) : riders;
+
   const completedKekeTrips = completedTripsList.filter(t => t.vehicleType === 'keke').length;
   const completedCabTrips = completedTripsList.filter(t => t.vehicleType === 'cab').length;
   const kekeFleet = kekes.filter(k => k.vehicleType === 'keke');
@@ -249,9 +289,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
         <div>
           <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ShieldCheck style={{ color: 'var(--uniben-gold)' }} />
-            USRide Hub
+            USRide Admin
           </h2>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>University of Benin Smart Solar Fleet Management</span>
+          <span style={{ fontSize: '11px', color: '#64748b' }}>University of Benin Smart Solar Fleet Management · {pilotDriversCount} Live Pilot Driver(s) · {pilotRidersCount} Live Pilot Rider(s)</span>
         </div>
 
         <div className="admin-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -318,11 +358,47 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
           </button>
 
           <button
+            onClick={() => {
+              const nextMode = dataFilterMode === 'all' ? 'pilot-only' : 'all';
+              setDataFilterMode(nextMode);
+              logAdminAction('FILTER_DATA_MODE', `Switched admin view to ${nextMode === 'pilot-only' ? 'Live Pilot Data Only' : 'All Records (Pilot + Preloaded Demo)'}`);
+            }}
+            style={{
+              padding: '7px 12px',
+              borderRadius: '8px',
+              border: `1px solid ${dataFilterMode === 'pilot-only' ? 'rgba(56,189,248,0.6)' : 'rgba(148,163,184,0.3)'}`,
+              backgroundColor: dataFilterMode === 'pilot-only' ? 'rgba(56,189,248,0.18)' : 'rgba(255,255,255,0.05)',
+              color: dataFilterMode === 'pilot-only' ? '#38bdf8' : '#cbd5e1',
+              fontSize: '11px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px'
+            }}
+            title="Toggle between Live Pilot Records Only vs All Records (including preloaded fleet)"
+          >
+            {dataFilterMode === 'pilot-only' ? '🟢 Showing: Live Pilot Only' : '📊 Filter: Live Pilot Only'}
+          </button>
+
+          <button
             onClick={() => showModal({
-              title: '🧹 Clear Driver Floating Balances',
-              message: 'This will zero out all drivers\' floating wallet balances and test trip counters while keeping riders\' real wallet balances untouched. Proceed?',
-              type: 'warning',
-              onConfirm: () => { clearDriverFloatingBalances(); },
+              title: '🔒 Protected Admin Action: Clear Driver Float',
+              message: 'Protected Action: To zero out all drivers\' floating wallet balances while keeping riders\' real wallet balances untouched, type CONFIRM below:',
+              type: 'security',
+              inputPlaceholder: 'Type CONFIRM to proceed...',
+              onInputSubmit: (val) => {
+                if (val.trim().toUpperCase() !== 'CONFIRM') {
+                  logAdminAction('CLEAR_DRIVER_FLOAT_BLOCKED', 'Admin confirmation text did not match CONFIRM');
+                  showModal({
+                    title: 'Action Cancelled',
+                    message: 'You must type CONFIRM in uppercase to execute this protected database operation.',
+                    type: 'error'
+                  });
+                  return;
+                }
+                clearDriverFloatingBalances();
+              }
             })}
             style={{
               padding: '7px 14px',
@@ -338,9 +414,46 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               gap: '5px',
               transition: 'all 0.2s'
             }}
-            title="Zero out floating driver wallet balances without affecting riders"
+            title="Protected: Requires typing CONFIRM to zero out floating driver wallet balances"
           >
-            <Trash2 size={13} /> Clear Driver Float
+            <Lock size={12} /> Clear Driver Float
+          </button>
+
+          <button
+            onClick={() => showModal({
+              title: '🔒 Protected Admin Action: Reset Database',
+              message: 'WARNING: This resets local simulator state to factory defaults. This action is locked behind admin confirmation. Type CONFIRM below to proceed:',
+              type: 'security',
+              inputPlaceholder: 'Type CONFIRM to reset database...',
+              onInputSubmit: (val) => {
+                if (val.trim().toUpperCase() !== 'CONFIRM') {
+                  logAdminAction('RESET_DATABASE_BLOCKED', 'Admin confirmation text did not match CONFIRM');
+                  showModal({
+                    title: 'Reset Blocked',
+                    message: 'Database reset aborted. You must type CONFIRM to execute a reset.',
+                    type: 'error'
+                  });
+                  return;
+                }
+                resetSimulatorDatabase();
+              }
+            })}
+            style={{
+              padding: '7px 12px',
+              borderRadius: '8px',
+              border: '1px solid rgba(239,68,68,0.4)',
+              backgroundColor: 'rgba(239,68,68,0.12)',
+              color: '#f87171',
+              fontSize: '11px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px'
+            }}
+            title="Protected Reset Database (Requires typing CONFIRM)"
+          >
+            <Lock size={12} /> Reset DB
           </button>
 
           <button
@@ -374,10 +487,13 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
           <div className="admin-grid">
             <div className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3>Total Fleet Size</h3>
+                <h3>Fleet Breakdown (Pilot vs Preloaded)</h3>
                 <div className="admin-stat" style={{ fontSize: '15px', marginTop: '6px' }}>
-                  {kekes.length} Vehicles ({kekes.filter(k => k.vehicleType === 'keke').length} USRide Kekes · {kekes.filter(k => k.vehicleType === 'cab').length} UCRide Cabs)
+                  {kekes.length} Vehicles ({kekes.filter(k => k.vehicleType === 'keke').length} USRide Kekes · {kekes.filter(k => k.vehicleType === 'cab').length} USRide Cabs)
                 </div>
+                <span style={{ fontSize: '10px', color: '#34d399', fontWeight: '700' }}>
+                  🟢 {pilotDriversCount} Live Pilot Driver(s) · 📦 {preloadedDriversCount} Preloaded Demo Fleet
+                </span>
               </div>
               <Zap size={32} style={{ color: 'var(--uniben-gold)' }} />
             </div>
@@ -386,16 +502,22 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               <div>
                 <h3>Active Online</h3>
                 <div className="admin-stat" style={{ fontSize: '15px', marginTop: '6px' }}>
-                  {kekes.filter(k => k.isOnline && k.vehicleType === 'keke').length} USRide Kekes · {kekes.filter(k => k.isOnline && k.vehicleType === 'cab').length} UCRide Cabs
+                  {kekes.filter(k => k.isOnline && k.vehicleType === 'keke').length} USRide Kekes · {kekes.filter(k => k.isOnline && k.vehicleType === 'cab').length} USRide Cabs
                 </div>
+                <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                  40% battery reserve guard active (~1%/km field rate)
+                </span>
               </div>
               <Check size={32} style={{ color: '#10b981' }} />
             </div>
 
             <div className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3>Active Ongoing Trips</h3>
-                <div className="admin-stat" style={{ fontSize: '15px', marginTop: '6px' }}>{activeRides} Active Bookings</div>
+                <h3>Live Pilot &amp; Trip Activity</h3>
+                <div className="admin-stat" style={{ fontSize: '15px', marginTop: '6px' }}>{activeRides} Active · {totalTripsCompleted} Completed</div>
+                <span style={{ fontSize: '10px', color: '#38bdf8', fontWeight: '700' }}>
+                  🟢 {pilotRidersCount} Live Pilot Rider(s) · 📦 {preloadedRidersCount} Preloaded Demo Rider(s)
+                </span>
               </div>
               <Play size={32} style={{ color: '#3b82f6' }} />
             </div>
@@ -472,7 +594,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                   required
                 >
                   <option value="keke">USRide (Solar Keke)</option>
-                  <option value="cab">UCRide (Campus Petrol Cab)</option>
+                  <option value="cab">USRide (Campus Cab)</option>
                 </select>
               </div>
 
@@ -520,12 +642,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', color: '#94a3b8' }}>Profile Photo URL (Optional)</label>
+                <label style={{ fontSize: '11px', color: '#94a3b8' }}>Profile Photo URL (Optional — defaults to USRide Branded Initials)</label>
                 <input 
                   type="text" 
                   className="landmark-select-item" 
                   style={{ width: '100%', color: '#1e293b', border: '1px solid #475569', marginTop: '4px', padding: '10px' }} 
-                  placeholder="e.g. https://images.unsplash.com/photo-..."
+                  placeholder="Leave blank for automatic USRide initials avatar"
                   value={newDriverPhoto}
                   onChange={(e) => setNewDriverPhoto(e.target.value)}
                 />
@@ -554,15 +676,25 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
               <div>
                 <h3 style={{ margin: 0 }}>
-                  Drivers Registry ({drivers.length} Registered)
+                  Drivers Registry ({displayedDrivers.length} Shown · {pilotDriversCount} Live Pilot / {preloadedDriversCount} Preloaded Demo)
                 </h3>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  {drivers.filter(d => d.vehicleType === 'keke').length} USRide Kekes · {drivers.filter(d => d.vehicleType === 'cab').length} UCRide Cabs · Earnings credited, paid out by the school: <strong style={{ color: '#38bdf8' }}>₦{totalDriverWalletPool.toLocaleString()}</strong>
+                  Phone numbers masked by default (click eye icon to reveal &amp; log) · Earnings credited, paid out by the school: <strong style={{ color: '#38bdf8' }}>₦{totalDriverWalletPool.toLocaleString()}</strong>
                 </span>
               </div>
               {totalDriverWalletPool > 0 && (
                 <button
-                  onClick={() => clearDriverFloatingBalances()}
+                  onClick={() => showModal({
+                    title: '🔒 Protected Admin Action: Zero All Driver Wallets',
+                    message: 'Type CONFIRM to zero out all driver wallet balances:',
+                    type: 'security',
+                    inputPlaceholder: 'Type CONFIRM to proceed...',
+                    onInputSubmit: (val) => {
+                      if (val.trim().toUpperCase() === 'CONFIRM') {
+                        clearDriverFloatingBalances();
+                      }
+                    }
+                  })}
                   style={{
                     padding: '6px 12px',
                     borderRadius: '6px',
@@ -574,7 +706,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                     cursor: 'pointer'
                   }}
                 >
-                  Zero All Driver Wallets
+                  🔒 Zero All Driver Wallets
                 </button>
               )}
             </div>
@@ -584,9 +716,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                 <thead>
                   <tr>
                     <th>Driver Code</th>
+                    <th>Data Source</th>
                     <th>Photo</th>
                     <th>Name</th>
-                    <th>Phone</th>
+                    <th>Phone (Masked)</th>
                     <th>Vehicle Assigned</th>
                     <th>Trips Done</th>
                     <th>Earnings credited, paid out by the school</th>
@@ -595,14 +728,30 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {drivers.map(d => {
+                  {displayedDrivers.map(d => {
                     const v = kekes.find(k => k.id === d.kekeId);
+                    const pilot = isPilotDriver(d);
+                    const phoneKey = `drv-${d.id}`;
+                    const isPhoneRevealed = !!revealedPhones[phoneKey];
                     return (
                       <tr key={d.id}>
                         <td style={{ fontWeight: 'bold', color: 'var(--uniben-gold)' }}>{d.driverIdCode}</td>
                         <td>
+                          <span style={{
+                            padding: '2px 7px',
+                            borderRadius: '8px',
+                            fontSize: '9px',
+                            fontWeight: '800',
+                            backgroundColor: pilot ? 'rgba(16,185,129,0.2)' : 'rgba(148,163,184,0.15)',
+                            color: pilot ? '#34d399' : '#94a3b8',
+                            border: `1px solid ${pilot ? 'rgba(16,185,129,0.4)' : 'rgba(148,163,184,0.3)'}`
+                          }}>
+                            {pilot ? '🟢 LIVE PILOT' : '📦 PRELOADED'}
+                          </span>
+                        </td>
+                        <td>
                           <img 
-                            src={d.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'} 
+                            src={d.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=064e3b&color=fff&bold=true`} 
                             alt={d.name}
                             style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
                           />
@@ -612,9 +761,21 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                           <div style={{ fontSize: '10px', color: '#64748b' }}>{d.email}</div>
                         </td>
                         <td>
-                          <a href={`tel:${d.phoneNumber || ''}`} style={{ color: 'var(--uniben-gold)', textDecoration: 'underline' }}>
-                            {d.phoneNumber || 'N/A'}
-                          </a>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: isPhoneRevealed ? 'var(--uniben-gold)' : '#94a3b8', fontFamily: 'monospace', fontSize: '11px' }}>
+                              {isPhoneRevealed ? (d.phoneNumber || 'N/A') : maskPhoneNumber(d.phoneNumber)}
+                            </span>
+                            {d.phoneNumber && (
+                              <button
+                                type="button"
+                                onClick={() => toggleRevealPhone(phoneKey, `Driver ${d.name} (${d.driverIdCode})`, d.phoneNumber)}
+                                style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                                title={isPhoneRevealed ? 'Hide phone number' : 'Reveal phone number (logged in audit trail)'}
+                              >
+                                {isPhoneRevealed ? <EyeOff size={12} /> : <Eye size={12} />}
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td>
                           <span style={{ 
@@ -626,7 +787,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                             color: 'white',
                             fontWeight: 'bold'
                           }}>
-                            {d.vehicleType === 'keke' ? 'USRide' : 'UCRide'}
+                            {d.vehicleType === 'keke' ? 'USRide Keke' : 'USRide Cab'}
                           </span>
                           #{d.kekeId} ({v?.plateNumber || '...'})
                         </td>
@@ -681,18 +842,26 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
       {/* ADMIN VIEW 3: MANAGE RIDERS */}
       {adminTab === 'riders' && (
         <div className="admin-card">
-          <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '15px' }}>
-            Riders Directory (Students & Staff)
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', marginBottom: '15px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h3 style={{ margin: 0 }}>
+                Riders Directory ({displayedRiders.length} Shown · {pilotRidersCount} Live Pilot / {preloadedRidersCount} Preloaded Demo)
+              </h3>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                Phone numbers are masked by default for rider privacy. Click the eye icon to reveal (action is recorded in Admin Audit Log).
+              </span>
+            </div>
+          </div>
           
           <div style={{ overflowX: 'auto' }}>
             <table className="admin-list-table">
               <thead>
                 <tr>
                   <th>Rider ID</th>
+                  <th>Data Source</th>
                   <th>Photo</th>
                   <th>Name</th>
-                  <th>Phone</th>
+                  <th>Phone (Masked)</th>
                   <th>Email</th>
                   <th>User Role</th>
                   <th>Wallet Balance</th>
@@ -701,29 +870,59 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                 </tr>
               </thead>
               <tbody>
-                {riders.map(r => (
-                  <tr key={r.id}>
-                    <td>{r.id.toUpperCase()}</td>
-                    <td>
-                      <img 
-                        src={r.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'} 
-                        alt={r.name}
-                        style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
-                      />
-                    </td>
-                    <td style={{ fontWeight: 'bold', color: 'white' }}>{r.name}</td>
-                    <td>
-                      <a href={`tel:${r.phoneNumber}`} style={{ color: 'var(--uniben-gold)', textDecoration: 'underline' }}>
-                        {r.phoneNumber}
-                      </a>
-                    </td>
-                    <td>{r.email}</td>
-                    <td style={{ textTransform: 'capitalize' }}>{r.role}</td>
-                    <td style={{ color: 'var(--uniben-green-light)', fontWeight: 'bold' }}>₦{r.walletBalance.toLocaleString()}</td>
-                    <td>{r.totalTrips}</td>
-                    <td>★ {r.averageRating}</td>
-                  </tr>
-                ))}
+                {displayedRiders.map(r => {
+                  const pilot = isPilotRider(r);
+                  const phoneKey = `rdr-${r.id}`;
+                  const isPhoneRevealed = !!revealedPhones[phoneKey];
+                  return (
+                    <tr key={r.id}>
+                      <td>{r.id.toUpperCase()}</td>
+                      <td>
+                        <span style={{
+                          padding: '2px 7px',
+                          borderRadius: '8px',
+                          fontSize: '9px',
+                          fontWeight: '800',
+                          backgroundColor: pilot ? 'rgba(16,185,129,0.2)' : 'rgba(148,163,184,0.15)',
+                          color: pilot ? '#34d399' : '#94a3b8',
+                          border: `1px solid ${pilot ? 'rgba(16,185,129,0.4)' : 'rgba(148,163,184,0.3)'}`
+                        }}>
+                          {pilot ? '🟢 LIVE PILOT' : '📦 PRELOADED'}
+                        </span>
+                      </td>
+                      <td>
+                        <img 
+                          src={r.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(r.name)}&background=047857&color=fff&bold=true`} 
+                          alt={r.name}
+                          style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
+                        />
+                      </td>
+                      <td style={{ fontWeight: 'bold', color: 'white' }}>{r.name}</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ color: isPhoneRevealed ? 'var(--uniben-gold)' : '#94a3b8', fontFamily: 'monospace', fontSize: '11px' }}>
+                            {isPhoneRevealed ? r.phoneNumber : maskPhoneNumber(r.phoneNumber)}
+                          </span>
+                          {r.phoneNumber && (
+                            <button
+                              type="button"
+                              onClick={() => toggleRevealPhone(phoneKey, `Rider ${r.name} (${r.email})`, r.phoneNumber)}
+                              style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                              title={isPhoneRevealed ? 'Hide phone number' : 'Reveal phone number (logged in audit trail)'}
+                            >
+                              {isPhoneRevealed ? <EyeOff size={12} /> : <Eye size={12} />}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td>{r.email}</td>
+                      <td style={{ textTransform: 'capitalize' }}>{r.role}</td>
+                      <td style={{ color: 'var(--uniben-green-light)', fontWeight: 'bold' }}>₦{r.walletBalance.toLocaleString()}</td>
+                      <td>{r.totalTrips}</td>
+                      <td>★ {r.averageRating}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -745,12 +944,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
             </div>
 
             <div className="admin-card">
-              <h3>Avg USRide Battery Level</h3>
+              <h3>Avg USRide Battery (Calibrated est.)</h3>
               <div className="admin-stat">
                 {avgKekeBattery}%
               </div>
               <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                {kekeFleet.length} Solar Kekes · Total Energy Drained: {totalEnergyDrained.toFixed(1)}%
+                ~1%/km field rate · 40% reserve floor · Drained: {totalEnergyDrained.toFixed(1)}%
               </span>
             </div>
 
@@ -991,22 +1190,28 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
               </div>
             </div>
 
-            {/* General System logs */}
+            {/* Admin Security Audit Log & System Operations */}
             <div className="admin-card" style={{ flex: 1, minWidth: '300px' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '15px' }}>
-                <Info size={16} /> System Operations Logs
+                <Info size={16} /> Admin Audit Log &amp; Operations ({adminAuditLogs.length})
               </h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto', fontSize: '11px', color: '#94a3b8' }}>
+                {adminAuditLogs.map(entry => (
+                  <div key={entry.id} style={{ padding: '6px 8px', backgroundColor: 'rgba(56, 189, 248, 0.06)', borderLeft: '3px solid #38bdf8', borderRadius: '4px', color: '#e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#38bdf8', fontWeight: '700' }}>
+                      <span>[AUDIT: {entry.action}]</span>
+                      <span>{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div style={{ marginTop: '2px', fontSize: '11px' }}>{entry.details}</div>
+                  </div>
+                ))}
                 <div style={{ padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                  [System] {new Date().toLocaleTimeString()} - USRide administrative panel dashboard initialized.
-                </div>
-                <div style={{ padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                  [Database] Preloaded 17 solar-powered tricycles with active locations.
+                  [System] {new Date().toLocaleTimeString()} - USRide Admin console initialized ({pilotDriversCount} live pilot driver(s), {preloadedDriversCount} preloaded demo vehicles).
                 </div>
                 {safetyIncidents.map(inc => (
                   <div key={`syslog-${inc.id}`} style={{ padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.02)', color: '#f87171' }}>
-                    [Incident Log] SOS Triggered: {inc.riderName} ({inc.riderPhone}) near {inc.landmarkName} - "{inc.description}".
+                    [Incident Log] {inc.description.startsWith('[DISPUTE]') ? '⚖️ 24h Dispute' : '🚨 SOS'}: {inc.riderName} ({maskPhoneNumber(inc.riderPhone)}) near {inc.landmarkName} - "{inc.description}".
                   </div>
                 ))}
                 {trips.map(t => (

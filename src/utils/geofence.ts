@@ -6,12 +6,14 @@ export const KEKE_BATTERY_SPEC = {
   voltageV: 96,
   capacityAh: 62,          // average of 60Ah and 64Ah across the two battery models recorded
   energyWh: 5952,          // 96V × 62Ah
+  reserveFloorPercent: 40, // 40% minimum safe battery reserve floor
+  avgTripDistanceKm: 2.15, // field-measured average UNIBEN trip distance (53.78 km / 25 trips)
   cruiseSpeedKmH: 24,      // observed average cruise speed in drive mode (field-measured)
   bumpSpeedKmH: 8,         // observed average speed while crossing a bump (2–14 km/h range, midpoint)
   bumpDelayMinutes: 0.16,  // ~10 seconds time lost per bump (deceleration + crossing + acceleration)
-  baseBattRatePerKm: 0.80, // %/km at 0 passengers (driver only), field-derived α₀
-  passBattRatePerKm: 0.15, // additional %/km per passenger (field-derived α₁)
-  bumpBattRatePerKm: 0.05, // additional %/km per road bump (field-derived α₂)
+  baseBattRatePerKm: 0.80, // %/km at 0 passengers (driver only), field-derived α₀ (~1% per km with load)
+  passBattRatePerKm: 0.08, // additional %/km per passenger (calibrated so typical campus load ≈ 1.0% per km)
+  bumpBattRatePerKm: 0.02, // additional %/km per road bump (field-calibrated ~0.96%–1.10% per km total)
 };
 
 // ─── Road Bump Lookup Map for Known UNIBEN Landmark-to-Landmark Routes ───────
@@ -98,18 +100,46 @@ export const calculateBatteryDrop = (
 };
 
 /**
- * Estimate remaining range in km given current battery percentage.
- * Uses average campus consumption rate at 2 passengers (typical ride).
+ * Estimate remaining range in km given current battery percentage,
+ * counting ONLY usable capacity above the 40% battery reserve floor.
+ * Uses field-test consumption rate of ~1% per km.
  */
 export const estimateRangeKm = (
   batteryPercent: number,
   passengers: number = 2
 ): number => {
-  const { baseBattRatePerKm, passBattRatePerKm } = KEKE_BATTERY_SPEC;
-  // Average bumps across all routes ≈ 5
+  const { baseBattRatePerKm, passBattRatePerKm, reserveFloorPercent } = KEKE_BATTERY_SPEC;
+  const usableBattery = Math.max(0, batteryPercent - reserveFloorPercent);
   const avgBumps = 5;
-  const rate = baseBattRatePerKm + passBattRatePerKm * passengers + 0.05 * avgBumps;
-  return Math.floor(batteryPercent / rate);
+  const rate = baseBattRatePerKm + passBattRatePerKm * passengers + 0.02 * avgBumps; // ~1.06% per km
+  return Math.round((usableBattery / rate) * 10) / 10;
+};
+
+/**
+ * Calculate how many trips can be completed above the 40% battery reserve floor
+ * given a specific route distance (or the 2.15 km campus average).
+ */
+export const estimateTripsLeftAboveReserve = (
+  batteryPercent: number,
+  routeDistanceKm: number = KEKE_BATTERY_SPEC.avgTripDistanceKm,
+  passengers: number = 2,
+  bumps: number = 5
+): number => {
+  const usableBattery = Math.max(0, batteryPercent - KEKE_BATTERY_SPEC.reserveFloorPercent);
+  if (usableBattery <= 0) return 0;
+  const dropPerTrip = Math.max(0.5, calculateBatteryDrop(Math.max(0.5, routeDistanceKm), passengers, bumps));
+  return Math.floor(usableBattery / dropPerTrip);
+};
+
+/**
+ * Deterministic 4-digit boarding verification code from a trip ID.
+ */
+export const getTripBoardingCode = (tripId: string): string => {
+  let hash = 0;
+  for (let i = 0; i < tripId.length; i++) {
+    hash = (hash * 31 + tripId.charCodeAt(i)) % 9000;
+  }
+  return String(1000 + Math.abs(hash));
 };
 
 // Simple rectangular geofence check

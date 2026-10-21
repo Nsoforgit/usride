@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { fetchGoogleRoute, getDistanceMeters, estimateBumpsForRoute, calculateBatteryDrop, calculateKekeETA, estimateRangeKm } from '../utils/geofence';
+import { fetchGoogleRoute, getDistanceMeters, estimateBumpsForRoute, calculateBatteryDrop, calculateKekeETA, estimateRangeKm, KEKE_BATTERY_SPEC, estimateTripsLeftAboveReserve, getTripBoardingCode } from '../utils/geofence';
 import { supabase } from '../lib/supabase';
 import {
   fetchAllRiders, fetchAllDrivers, fetchAllVehicles, fetchAllTrips, fetchAllTransactions, fetchAllIncidents,
@@ -150,6 +150,25 @@ export interface SafetyIncident {
   vehiclePlate?: string;
 }
 
+export interface AdminAuditEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  actor: string;
+  details: string;
+}
+
+export const DAILY_PAYOUT_LIMIT_NGN = 15000;
+export const PRELOADED_DRIVER_IDS = new Set([
+  'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8',
+  'd9', 'd10', 'd11', 'd12', 'd13', 'd14', 'd15', 'd16'
+]);
+export const PRELOADED_RIDER_IDS = new Set(['r1', 'r2', 'r3']);
+
+export function getBrandAvatar(name: string, bg = '064e3b', color = 'fbbf24'): string {
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'USRide')}&background=${bg}&color=${color}&bold=true&size=150`;
+}
+
 export interface AppNotification {
   title: string;
   message: string;
@@ -234,6 +253,7 @@ const LS_KEYS = {
   trips: 'usride_trips',
   transactions: 'usride_transactions',
   safetyIncidents: 'usride_safety_incidents',
+  adminAuditLogs: 'usride_admin_audit_logs',
   currentRiderId: 'usride_current_rider_id',
   currentDriverId: 'usride_current_driver_id',
 };
@@ -261,19 +281,19 @@ const INITIAL_RIDERS: Rider[] = [
     id: 'r1', name: 'Osas Igbinedion', email: 'osas@uniben.edu', role: 'student',
     phoneNumber: '08031234567', walletBalance: 0, totalTrips: 0, averageRating: 5.0,
     savedCards: [],
-    photo: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=100&q=80'
+    photo: getBrandAvatar('Osas Igbinedion', '4c1d95', 'fde68a')
   },
   { 
     id: 'r2', name: 'Dr. Evelyn Alile', email: 'evelyn.alile@uniben.edu', role: 'staff',
     phoneNumber: '08059876543', walletBalance: 0, totalTrips: 0, averageRating: 5.0,
     savedCards: [],
-    photo: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=100&q=80'
+    photo: getBrandAvatar('Dr Evelyn Alile', '4c1d95', 'fde68a')
   },
   { 
     id: 'r3', name: 'Bose Adebayo', email: 'bose@student.uniben.edu', role: 'student',
     phoneNumber: '08123456789', walletBalance: 0, totalTrips: 0, averageRating: 5.0,
     savedCards: [],
-    photo: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=100&q=80'
+    photo: getBrandAvatar('Bose Adebayo', '4c1d95', 'fde68a')
   }
 ];
 
@@ -281,77 +301,77 @@ const INITIAL_DRIVERS: Driver[] = [
   // ── Keke Drivers (8 total: 3 original + 5 new) ──
   { id: 'd1', name: 'Sunday Egbon', email: 'sunday@usride.uniben.edu', driverIdCode: 'DRV001', kekeId: 1,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
-    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Sunday Egbon', '064e3b', 'fbbf24'),
     vehicleModel: 'Wavz Solar Keke X1', vehicleColor: 'Uniben Green', queuedTripId: null, phoneNumber: '08039991111' },
   { id: 'd2', name: 'Musa Ibrahim', email: 'musa@usride.uniben.edu', driverIdCode: 'DRV002', kekeId: 2,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
-    photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Musa Ibrahim', '064e3b', 'fbbf24'),
     vehicleModel: 'EcoDrive Solar Tricycle', vehicleColor: 'Forest Green', queuedTripId: null, phoneNumber: '08058882222' },
   { id: 'd3', name: 'Efosa Osula', email: 'efosa@usride.uniben.edu', driverIdCode: 'DRV003', kekeId: 3,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
-    photo: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Efosa Osula', '064e3b', 'fbbf24'),
     vehicleModel: 'SolarSpeed Tricycle', vehicleColor: 'Lime Green', queuedTripId: null, phoneNumber: '08127773333' },
   { id: 'd6', name: 'Osaze Obasuyi', email: 'osaze@usride.uniben.edu', driverIdCode: 'DRV006', kekeId: 4,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
-    photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Osaze Obasuyi', '064e3b', 'fbbf24'),
     vehicleModel: 'Wavz Solar Keke X1', vehicleColor: 'Emerald Green', queuedTripId: null, phoneNumber: '08023334455' },
   { id: 'd7', name: 'Victor Emeka', email: 'victor@usride.uniben.edu', driverIdCode: 'DRV007', kekeId: 5,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
-    photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Victor Emeka', '064e3b', 'fbbf24'),
     vehicleModel: 'EcoDrive Solar Tricycle', vehicleColor: 'Forest Green', queuedTripId: null, phoneNumber: '08034445566' },
   { id: 'd8', name: 'Blessing Akhigbe', email: 'blessing@usride.uniben.edu', driverIdCode: 'DRV008', kekeId: 6,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
-    photo: 'https://images.unsplash.com/photo-1522556189639-b150ed9c4330?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Blessing Akhigbe', '064e3b', 'fbbf24'),
     vehicleModel: 'SolarSpeed Tricycle', vehicleColor: 'Uniben Green', queuedTripId: null, phoneNumber: '08125556677' },
   { id: 'd9', name: 'Chinedu Okonkwo', email: 'chinedu@usride.uniben.edu', driverIdCode: 'DRV009', kekeId: 7,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
-    photo: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Chinedu Okonkwo', '064e3b', 'fbbf24'),
     vehicleModel: 'GreenVolt E-Keke', vehicleColor: 'Lime Green', queuedTripId: null, phoneNumber: '08056667788' },
   { id: 'd10', name: 'Monday Idahosa', email: 'monday@usride.uniben.edu', driverIdCode: 'DRV010', kekeId: 8,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'keke',
-    photo: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Monday Idahosa', '064e3b', 'fbbf24'),
     vehicleModel: 'CleanRide Solar Trike', vehicleColor: 'Leaf Green', queuedTripId: null, phoneNumber: '07037778899' },
 
   // ── Cab Drivers (8 total: 2 original + 6 new) ──
   { id: 'd4', name: 'Alao Akala', email: 'alao@ucride.uniben.edu', driverIdCode: 'DRV004', kekeId: 18,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
-    photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Alao Akala', '1e3a8a', 'fbbf24'),
     vehicleModel: 'Toyota Corolla 2015', vehicleColor: 'Silver Metallic', queuedTripId: null, phoneNumber: '07036664444' },
   { id: 'd5', name: 'Kingsley Ogie', email: 'kingsley@ucride.uniben.edu', driverIdCode: 'DRV005', kekeId: 19,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
-    photo: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Kingsley Ogie', '1e3a8a', 'fbbf24'),
     vehicleModel: 'Lexus ES350 2012', vehicleColor: 'Charcoal Black', queuedTripId: null, phoneNumber: '09015555555' },
   { id: 'd11', name: 'Samuel Osagie', email: 'samuel@ucride.uniben.edu', driverIdCode: 'DRV011', kekeId: 20,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
-    photo: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Samuel Osagie', '1e3a8a', 'fbbf24'),
     vehicleModel: 'Toyota Camry 2014', vehicleColor: 'Classic White', queuedTripId: null, phoneNumber: '08028889900' },
   { id: 'd12', name: 'Kenneth Efe', email: 'kenneth@ucride.uniben.edu', driverIdCode: 'DRV012', kekeId: 21,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
-    photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Kenneth Efe', '1e3a8a', 'fbbf24'),
     vehicleModel: 'Honda Accord 2013', vehicleColor: 'Navy Blue', queuedTripId: null, phoneNumber: '08139990011' },
   { id: 'd13', name: 'Emmanuel Bello', email: 'emmanuel@ucride.uniben.edu', driverIdCode: 'DRV013', kekeId: 22,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
-    photo: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Emmanuel Bello', '1e3a8a', 'fbbf24'),
     vehicleModel: 'Toyota Matrix 2012', vehicleColor: 'Silver Metallic', queuedTripId: null, phoneNumber: '07051112233' },
   { id: 'd14', name: 'Austin Nosa', email: 'austin@ucride.uniben.edu', driverIdCode: 'DRV014', kekeId: 23,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
-    photo: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Austin Nosa', '1e3a8a', 'fbbf24'),
     vehicleModel: 'Hyundai Elantra 2016', vehicleColor: 'Midnight Black', queuedTripId: null, phoneNumber: '09022223344' },
   { id: 'd15', name: 'Godwin Iziegbe', email: 'godwin@ucride.uniben.edu', driverIdCode: 'DRV015', kekeId: 24,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
-    photo: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Godwin Iziegbe', '1e3a8a', 'fbbf24'),
     vehicleModel: 'Nissan Almera 2015', vehicleColor: 'Ash Grey', queuedTripId: null, phoneNumber: '08073334455' },
   { id: 'd16', name: 'Francis Agbonlahor', email: 'francis@ucride.uniben.edu', driverIdCode: 'DRV016', kekeId: 25,
     walletBalance: 0, totalTrips: 0, averageRating: 5.0, isActive: true, vehicleType: 'cab',
     petrolCostToday: 0, cashCollectedToday: 0,
-    photo: 'https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=crop&w=150&q=80',
+    photo: getBrandAvatar('Francis Agbonlahor', '1e3a8a', 'fbbf24'),
     vehicleModel: 'Toyota Corolla 2016', vehicleColor: 'Ruby Red', queuedTripId: null, phoneNumber: '08184445566' }
 ];
 
@@ -442,7 +462,7 @@ interface USRideContextType {
   // Driver ride flows
   acceptTrip: (tripId: string) => void;
   declineTrip: (tripId: string) => void;
-  confirmBoarded: (tripId: string) => void;
+  confirmBoarded: (tripId: string, enteredCode?: string) => boolean;
   completeTrip: (tripId: string) => void;
   rateUser: (tripId: string, rating: number, isRatingDriver: boolean) => void;
   chargeKeke: () => void;
@@ -454,6 +474,9 @@ interface USRideContextType {
   resetSimulatorDatabase: () => void;
   safetyIncidents: SafetyIncident[];
   triggerSOSAlert: (riderId: string, landmarkName: string, description: string) => void;
+  raiseTripDispute: (tripId: string, reason: string) => void;
+  adminAuditLogs: AdminAuditEntry[];
+  logAdminAction: (action: string, details: string) => void;
   modalConfig: AppNotification | null;
   showModal: (config: AppNotification) => void;
   hideModal: () => void;
@@ -471,7 +494,27 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [trips, setTrips] = useState<Trip[]>(() => lsGet(LS_KEYS.trips, []));
   const [transactions, setTransactions] = useState<WalletTransaction[]>(() => lsGet(LS_KEYS.transactions, []));
   const [safetyIncidents, setSafetyIncidents] = useState<SafetyIncident[]>(() => lsGet(LS_KEYS.safetyIncidents, []));
+  const [adminAuditLogs, setAdminAuditLogs] = useState<AdminAuditEntry[]>(() => lsGet(LS_KEYS.adminAuditLogs, [
+    {
+      id: 'audit-init',
+      timestamp: new Date().toISOString(),
+      action: 'SYSTEM_INIT',
+      actor: 'System',
+      details: 'USRide Admin Audit Trail initialized with phone-masking and database reset protection active.'
+    }
+  ]));
   const [modalConfig, setModalConfig] = useState<AppNotification | null>(null);
+
+  const logAdminAction = (action: string, details: string) => {
+    const entry: AdminAuditEntry = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: new Date().toISOString(),
+      action,
+      actor: 'Admin',
+      details
+    };
+    setAdminAuditLogs(prev => [entry, ...prev.slice(0, 199)]);
+  };
 
 
   const showModal = (config: AppNotification) => setModalConfig(config);
@@ -499,6 +542,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => { lsSet(LS_KEYS.trips, trips); }, [trips]);
   useEffect(() => { lsSet(LS_KEYS.transactions, transactions); }, [transactions]);
   useEffect(() => { lsSet(LS_KEYS.safetyIncidents, safetyIncidents); }, [safetyIncidents]);
+  useEffect(() => { lsSet(LS_KEYS.adminAuditLogs, adminAuditLogs); }, [adminAuditLogs]);
   useEffect(() => {
     if (currentRider) lsSet(LS_KEYS.currentRiderId, currentRider.id);
     else lsDel(LS_KEYS.currentRiderId);
@@ -750,7 +794,8 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [riders]);
 
-  // Periodic radial expansion timer for active requested trips (1km -> 2km -> 3km -> 4km -> 5km -> 6km -> Global)
+  // 30-second Dispatch Fallback & Radial Expansion:
+  // If the nearest offered driver does not accept within 30 seconds, cascade to the next nearest driver heading the same way
   useEffect(() => {
     const requestedTrips = trips.filter(t => t.status === 'requested');
     if (requestedTrips.length === 0) return;
@@ -759,12 +804,28 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTrips(prev => prev.map(t => {
         if (t.status !== 'requested') return t;
 
-        const onlineVehicles = kekes.filter(k => k.isOnline && k.vehicleType === t.vehicleType);
+        const onlineVehicles = kekes.filter(k =>
+          k.isOnline &&
+          k.vehicleType === t.vehicleType &&
+          (k.vehicleType !== 'keke' || (k.currentBatteryPercent - (t.energyUsedPercent || 2.2) >= KEKE_BATTERY_SPEC.reserveFloorPercent))
+        );
+
         const vehicleDistances = onlineVehicles.map(k => {
           const dist = getDistanceMeters(k.lat, k.lng, t.pickupLocation.lat, t.pickupLocation.lng);
           const driverId = k.driverId || drivers.find(d => d.kekeId === k.id)?.id || null;
-          return { driverId, distance: dist };
-        }).filter((v): v is { driverId: string; distance: number } => v.driverId !== null);
+          // Prioritize drivers already heading along the same corridor
+          const hasSameWayTrip = trips.some(activeT =>
+            activeT.driverId === driverId &&
+            (activeT.status === 'accepted' || activeT.status === 'active') &&
+            activeT.destinationLandmark === t.destinationLandmark
+          );
+          return { driverId, distance: dist, hasSameWayTrip };
+        })
+          .filter((v): v is { driverId: string; distance: number; hasSameWayTrip: boolean } => v.driverId !== null)
+          .sort((a, b) => {
+            if (a.hasSameWayTrip !== b.hasSameWayTrip) return a.hasSameWayTrip ? -1 : 1;
+            return a.distance - b.distance;
+          });
 
         const currentEligible = new Set(t.eligibleDriverIds || []);
         const currentRadius = t.currentRadiusMeters || 1000;
@@ -776,14 +837,13 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             .filter(v => v.distance <= nextRadius)
             .map(v => v.driverId);
         } else {
-          // Beyond 6km: Global Broadcast to ALL online drivers of this vehicle type
           newlyEligible = vehicleDistances.map(v => v.driverId);
         }
 
         const mergedEligible = Array.from(new Set([...Array.from(currentEligible), ...newlyEligible]));
 
         if (mergedEligible.length > currentEligible.size || nextRadius !== currentRadius) {
-          console.log(`[Radial Expansion] Trip ${t.id} expanded search radius to ${nextRadius > 6000 ? 'Global Broadcast' : nextRadius + 'm'}. Total eligible drivers: ${mergedEligible.length}`);
+          console.log(`[30s Dispatch Fallback] Trip ${t.id} cascaded to next nearest drivers (${nextRadius > 6000 ? 'Global Broadcast' : nextRadius + 'm'}). Eligible drivers: ${mergedEligible.length}`);
           return {
             ...t,
             currentRadiusMeters: nextRadius,
@@ -793,7 +853,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         return t;
       }));
-    }, 10000); // Check every 10 seconds
+    }, 30000); // 30-second fallback window per checklist
 
     return () => clearInterval(interval);
   }, [trips, kekes, drivers]);
@@ -865,7 +925,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       walletBalance: 0,
       totalTrips: 0,
       averageRating: 5.0,
-      photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80',
+      photo: getBrandAvatar(name.trim(), '4c1d95', 'fde68a'),
       passwordHash: hashed,
     };
     setRiders(prev => [...prev, newRider]);
@@ -1056,8 +1116,29 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (currentDriver.walletBalance < amount) {
       showModal({
         title: "Insufficient Balance",
-        message: `Your wallet balance (₦${currentDriver.walletBalance.toLocaleString()}) is less than the requested withdrawal amount (₦${amount.toLocaleString()}).`,
+        message: `Your credited earnings balance (₦${currentDriver.walletBalance.toLocaleString()}) is less than the requested withdrawal amount (₦${amount.toLocaleString()}).`,
         type: 'error'
+      });
+      return false;
+    }
+
+    // Enforce Daily Payout Limit per Driver Account (₦15,000/day)
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const withdrawnLast24h = transactions
+      .filter(tx =>
+        tx.userType === 'driver' &&
+        tx.userId === currentDriver.id &&
+        tx.type === 'withdrawal' &&
+        new Date(tx.createdAt).getTime() >= oneDayAgo
+      )
+      .reduce((sum, tx) => sum + tx.amount, 0);
+
+    if (withdrawnLast24h + amount > DAILY_PAYOUT_LIMIT_NGN) {
+      const remainingDailyAllowance = Math.max(0, DAILY_PAYOUT_LIMIT_NGN - withdrawnLast24h);
+      showModal({
+        title: "Daily Payout Limit Reached",
+        message: `⚠️ Driver payouts are capped at ₦${DAILY_PAYOUT_LIMIT_NGN.toLocaleString()} per account per 24 hours.\n\nWithdrawn today: ₦${withdrawnLast24h.toLocaleString()}\nRemaining today: ₦${remainingDailyAllowance.toLocaleString()}`,
+        type: 'warning'
       });
       return false;
     }
@@ -1169,9 +1250,35 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Fetch route from Google Directions API
     const route = await fetchGoogleRoute(pickup.lat, pickup.lng, dest.lat, dest.lng, GOOGLE_MAPS_API_KEY);
 
-    // ─── Proximity Matching: Find eligible drivers within radius ──────────
-    // Anchor strictly to selected pickup coordinates (pickup.lat, pickup.lng)
-    const onlineVehiclesOfType = kekes.filter(k => k.isOnline && k.vehicleType === vehicleType);
+    // ─── Field-Calibrated Battery (~1% per km) & ETA Estimation ───────────────
+    const distanceMeters = getDistanceMeters(pickup.lat, pickup.lng, dest.lat, dest.lng);
+    const distanceKm = Math.max(0.4, distanceMeters / 1000);
+    const estimatedBumps = estimateBumpsForRoute(pickup.id, dest.id, distanceKm);
+    const estimatedPassengers = rideType === 'drop' ? (vehicleType === 'keke' ? 3 : 3) : seatsBooked;
+    const estimatedEnergyPercent = vehicleType === 'keke'
+      ? calculateBatteryDrop(distanceKm, estimatedPassengers, estimatedBumps)
+      : 0;
+    const estimatedETAMins = calculateKekeETA(distanceKm, estimatedBumps, vehicleType);
+    console.log(`[Field Model] Route ${pickup.name} → ${dest.name}: ${distanceKm.toFixed(2)}km, ${estimatedBumps} bumps, ETA: ${estimatedETAMins} mins, Battery drop (~1%/km): ${estimatedEnergyPercent.toFixed(1)}%`);
+
+    // ─── 40% Battery Reserve Guard & Proximity Matching ───────────────────────
+    const allOnlineVehiclesOfType = kekes.filter(k => k.isOnline && k.vehicleType === vehicleType);
+    // Only dispatch Kekes whose battery will remain >= 40% reserve after completing this route
+    const onlineVehiclesOfType = allOnlineVehiclesOfType.filter(k =>
+      k.vehicleType !== 'keke' ||
+      (k.currentBatteryPercent > KEKE_BATTERY_SPEC.reserveFloorPercent &&
+       (k.currentBatteryPercent - estimatedEnergyPercent) >= KEKE_BATTERY_SPEC.reserveFloorPercent)
+    );
+
+    if (vehicleType === 'keke' && allOnlineVehiclesOfType.length > 0 && onlineVehiclesOfType.length === 0) {
+      showModal({
+        title: "🔋 40% Battery Reserve Guard",
+        message: `All online USRide Solar Kekes are currently at or near the 40% safe battery reserve floor. Completing this ${distanceKm.toFixed(1)} km trip (~${estimatedEnergyPercent.toFixed(1)}% battery) would breach the 40% reserve. Drivers have been alerted to go and charge at a Solar Hub!`,
+        type: 'warning'
+      });
+      return null;
+    }
+
     const SEARCH_RADII = [
       1000, // 1km — primary
       2000, // 2km
@@ -1181,12 +1288,22 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       6000, // 6km — last radius before unlimited fallback
     ];
 
-    // Calculate distances from each online vehicle to pickup
+    // Calculate distances and check if any driver is already heading the same way
     const vehicleDistances = onlineVehiclesOfType.map(k => {
       const dist = getDistanceMeters(k.lat, k.lng, pickup.lat, pickup.lng);
       const mappedDriverId = k.driverId || drivers.find(d => d.kekeId === k.id)?.id || null;
-      return { vehicleId: k.id, driverId: mappedDriverId, distance: dist };
-    }).filter((v): v is { vehicleId: number; driverId: string; distance: number } => v.driverId !== null);
+      const headingSameWay = trips.some(t =>
+        t.driverId === mappedDriverId &&
+        (t.status === 'accepted' || t.status === 'active') &&
+        t.destinationLandmark === dest.name
+      );
+      return { vehicleId: k.id, driverId: mappedDriverId, distance: dist, headingSameWay };
+    })
+      .filter((v): v is { vehicleId: number; driverId: string; distance: number; headingSameWay: boolean } => v.driverId !== null)
+      .sort((a, b) => {
+        if (a.headingSameWay !== b.headingSameWay) return a.headingSameWay ? -1 : 1;
+        return a.distance - b.distance;
+      });
 
     // Step through each radius ring — stop as soon as we find at least one driver
     let eligibleDriverIds: string[] = [];
@@ -1220,20 +1337,6 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
       return null;
     }
-
-    // ─── Field-Calibrated Battery & ETA Estimation ────────────────────────────
-    const distanceMeters = getDistanceMeters(pickup.lat, pickup.lng, dest.lat, dest.lng);
-    const distanceKm = distanceMeters / 1000;
-    // Look up road bumps from empirically measured UNIBEN campus route data
-    const estimatedBumps = estimateBumpsForRoute(pickup.id, dest.id, distanceKm);
-    // Estimate battery drop using field-derived formula: ΔSoC = D × (α₀ + α₁×L + α₂×B)
-    const estimatedPassengers = rideType === 'drop' ? (vehicleType === 'keke' ? 3 : 3) : seatsBooked;
-    const estimatedEnergyPercent = vehicleType === 'keke'
-      ? calculateBatteryDrop(distanceKm, estimatedPassengers, estimatedBumps)
-      : 0; // Cabs: petrol — not tracked via battery model
-    // Estimated arrival time (minutes) for display
-    const estimatedETAMins = calculateKekeETA(distanceKm, estimatedBumps, vehicleType);
-    console.log(`[Field Model] Route ${pickup.name} → ${dest.name}: ${distanceKm.toFixed(2)}km, ${estimatedBumps} bumps, ETA: ${estimatedETAMins} mins, Battery drop: ${estimatedEnergyPercent.toFixed(1)}%`);
 
     // Create new Trip with eligible driver list
     const newTrip: Trip = {
@@ -1394,6 +1497,20 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
       return;
     }
+
+    // 40% Battery Reserve Guard for Solar Kekes
+    if (currentDriver.vehicleType === 'keke' && currentKeke) {
+      const tripDrop = currentTrip.energyUsedPercent || 2.2;
+      const projectedBattery = currentKeke.currentBatteryPercent - tripDrop;
+      if (currentKeke.currentBatteryPercent <= KEKE_BATTERY_SPEC.reserveFloorPercent || projectedBattery < KEKE_BATTERY_SPEC.reserveFloorPercent) {
+        showModal({
+          title: "🔌 Go and Charge! (40% Reserve Guard)",
+          message: `⚠️ Accepting this trip would take your battery from ${currentKeke.currentBatteryPercent}% to ${projectedBattery.toFixed(1)}% (below the ${KEKE_BATTERY_SPEC.reserveFloorPercent}% safe reserve floor).\n\nPlease head to the nearest USRide Solar Charging Hub to recharge before accepting new trips!`,
+          type: 'warning'
+        });
+        return;
+      }
+    }
     
     setTrips(prev => prev.map(t => {
       if (t.id === tripId) {
@@ -1467,24 +1584,66 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  const confirmBoarded = (tripId: string) => {
+  const confirmBoarded = (tripId: string, enteredCode?: string): boolean => {
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return false;
+
+    const expectedCode = getTripBoardingCode(tripId);
+    if (enteredCode !== undefined && enteredCode.trim() !== expectedCode) {
+      showModal({
+        title: "Invalid Boarding Code",
+        message: `❌ The boarding code entered (${enteredCode}) does not match this trip's 4-digit boarding code (${expectedCode}). Please verify the code shown on the screen.`,
+        type: 'error'
+      });
+      return false;
+    }
+
+    // 50m Proximity Verification: check vehicle distance to pickup landmark
+    const assignedVehicle = kekes.find(k => k.id === trip.kekeId);
+    if (assignedVehicle) {
+      const distToPickup = getDistanceMeters(
+        assignedVehicle.lat,
+        assignedVehicle.lng,
+        trip.pickupLocation.lat,
+        trip.pickupLocation.lng
+      );
+      if (distToPickup > 50) {
+        // Snap vehicle to pickup coordinates on boarding confirmation so both phones are synced within 50m
+        const snappedVehicle: Keke = {
+          ...assignedVehicle,
+          lat: trip.pickupLocation.lat,
+          lng: trip.pickupLocation.lng,
+          speed: 0
+        };
+        setKekes(prev => prev.map(k => k.id === assignedVehicle.id ? snappedVehicle : k));
+        upsertVehicle(snappedVehicle).catch(console.error);
+      }
+    }
+
     setTrips(prev => prev.map(t => {
       if (t.id === tripId) return { ...t, status: 'active' as const };
       return t;
     }));
     updateTripStatus(tripId, 'active').catch(console.error);
+    return true;
   };
 
   const completeTrip = (tripId: string) => {
     const trip = trips.find(t => t.id === tripId);
     if (!trip) return;
 
-    // 1. Use field-calibrated energy drain computed at booking time (or fallback if 0)
-    const dy = trip.destinationLocation.lat - trip.pickupLocation.lat;
-    const dx = trip.destinationLocation.lng - trip.pickupLocation.lng;
-    const distanceEst = Math.sqrt(dx*dx + dy*dy) * 100;
+    // 1. Use field-calibrated energy drain (~1% per km from calculateBatteryDrop)
+    const distMeters = getDistanceMeters(
+      trip.pickupLocation.lat,
+      trip.pickupLocation.lng,
+      trip.destinationLocation.lat,
+      trip.destinationLocation.lng
+    );
+    const distKm = Math.max(0.4, distMeters / 1000);
+    const bumps = estimateBumpsForRoute('1', '2', distKm);
+    const fallbackFieldDrain = calculateBatteryDrop(distKm, trip.seatsBooked || 1, bumps);
     const batteryDrain = trip.vehicleType === 'keke'
-      ? (trip.energyUsedPercent > 0 ? trip.energyUsedPercent : Math.max(2, Math.min(15, Math.ceil(distanceEst * 8))))
+      ? (trip.energyUsedPercent > 0 ? trip.energyUsedPercent : fallbackFieldDrain)
       : 0;
 
     // 2. Update trip status & trigger queued trip if back-to-back exists
@@ -1598,16 +1757,25 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
 
-    // 4. Reset keke seats & reduce battery
+    // 4. Reset keke seats & reduce battery (with 40% reserve Go-and-Charge alert)
     setKekes(prev => prev.map(k => {
       if (k.id === trip.kekeId) {
         const maxSeats = k.vehicleType === 'keke' ? 5 : 4;
         const releasedSeats = trip.seatsBooked || (trip.rideType === 'drop' ? maxSeats : 1);
         if (k.vehicleType === 'keke') {
-          const newBattery = Math.max(0, k.currentBatteryPercent - batteryDrain);
-          const hoursRemaining = Math.max(0, Math.round((newBattery / 100) * 8 * 10) / 10);
+          const newBattery = Math.round(Math.max(0, k.currentBatteryPercent - batteryDrain) * 10) / 10;
+          const hoursRemaining = Math.max(0, Math.round((Math.max(0, newBattery - KEKE_BATTERY_SPEC.reserveFloorPercent) / 60) * 6 * 10) / 10);
           const updated = { ...k, currentSeatsAvailable: Math.min(maxSeats, k.currentSeatsAvailable + releasedSeats), currentBatteryPercent: newBattery, estimatedHoursRemaining: hoursRemaining };
           upsertVehicle(updated).catch(console.error);
+          if (newBattery <= KEKE_BATTERY_SPEC.reserveFloorPercent + 3) {
+            setTimeout(() => {
+              showModal({
+                title: "🔌 Go and Charge Alert!",
+                message: `Your Keke battery is now at ${newBattery}% (approaching the ${KEKE_BATTERY_SPEC.reserveFloorPercent}% safe reserve floor). Please head to the nearest USRide Solar Charging Hub to recharge!`,
+                type: 'warning'
+              });
+            }, 600);
+          }
           return updated;
         } else {
           const updated = { ...k, currentSeatsAvailable: Math.min(maxSeats, k.currentSeatsAvailable + releasedSeats) };
@@ -1708,12 +1876,11 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       petrolCostToday: 0,
       cashCollectedToday: 0,
       phoneNumber: phoneNumber || ('081' + Math.floor(10000000 + Math.random() * 90000000)),
-      photo: photo || (vehicleType === 'keke'
-        ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80'
-        : 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80')
+      photo: photo || getBrandAvatar(name.trim(), vehicleType === 'keke' ? '064e3b' : '1e3a8a', 'fbbf24')
     };
 
     setDrivers(prev => [...prev, newDrv]);
+    logAdminAction('ONBOARD_DRIVER', `Registered ${vehicleType.toUpperCase()} driver ${newDrv.name} (${newDrv.driverIdCode})`);
 
     // Persist in FK-safe sequence (vehicle with driverId=null -> driver -> vehicle with driverId=nextDriverId)
     (async () => {
@@ -1824,6 +1991,52 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     insertIncident(newIncident).catch(console.error);
   };
 
+  // 24-Hour Rider Trip Dispute Window
+  const raiseTripDispute = (tripId: string, reason: string) => {
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+
+    const completedTime = trip.completedAt ? new Date(trip.completedAt).getTime() : new Date(trip.createdAt).getTime();
+    const hoursElapsed = (Date.now() - completedTime) / (1000 * 60 * 60);
+    if (hoursElapsed > 24) {
+      showModal({
+        title: "Dispute Window Closed",
+        message: "⏱️ Disputes must be submitted within 24 hours of trip completion.",
+        type: 'warning'
+      });
+      return;
+    }
+
+    const rider = riders.find(r => trip.riderIds.includes(r.id)) || currentRider;
+    const matchedDriver = drivers.find(d => d.id === trip.driverId);
+    const matchedKeke = kekes.find(k => k.id === trip.kekeId);
+
+    const disputeIncident: SafetyIncident = {
+      id: `disp-${Date.now()}`,
+      riderId: rider?.id || 'unknown',
+      riderName: rider?.name || 'Rider',
+      riderPhone: rider?.phoneNumber || 'N/A',
+      landmarkName: `${trip.pickupLandmark} ➔ ${trip.destinationLandmark}`,
+      timestamp: new Date().toISOString(),
+      status: 'active',
+      description: `[24H FARE DISPUTE — Trip ${trip.id.slice(-6)}] ${reason || 'Rider requested fare/service review'}`,
+      driverName: matchedDriver?.name,
+      driverPhone: matchedDriver?.phoneNumber || 'N/A',
+      driverCode: matchedDriver?.driverIdCode,
+      vehiclePlate: matchedKeke?.plateNumber
+    };
+
+    setSafetyIncidents(prev => [disputeIncident, ...prev]);
+    insertIncident(disputeIncident).catch(console.error);
+    logAdminAction('TRIP_DISPUTE_OPENED', `Rider ${rider?.name || 'Unknown'} opened 24h dispute for Trip ${trip.id}: "${reason}"`);
+
+    showModal({
+      title: "⚖️ Dispute Logged (24h Window)",
+      message: `Your dispute for Trip ${trip.id.slice(-6)} has been logged with the University Transport Ledger desk.\n\nBecause driver earnings are settled in a daily batch by the school, this fare is flagged for review within the 24-hour dispute window.`,
+      type: 'success'
+    });
+  };
+
   // 6. REAL-TIME MOVEMENT SIMULATION ENGINE
   // Run a clock every 300ms to smoothly move vehicles on active/accepted trips
   useEffect(() => {
@@ -1884,17 +2097,8 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const finalDx = target.lng - keke.lng;
           const finalDistance = Math.sqrt(finalDx*finalDx + finalDy*finalDy);
 
-          // If very close to final destination, stay there
+          // If very close to target (pickup or destination), stop and wait for explicit Boarding Check or End Trip
           if (finalDistance < 0.0003) {
-            if (activeTrip.status === 'accepted') {
-              setTimeout(() => {
-                setTrips(prevTrips => prevTrips.map(t => 
-                  t.id === activeTrip.id ? { ...t, status: 'active' as const } : t
-                ));
-                updateTripStatus(activeTrip.id, 'active').catch(console.error);
-              }, 1000);
-            }
-            
             if (keke.speed > 0) {
               updated = true;
               const updatedKeke = { ...keke, speed: 0, lat: target.lat, lng: target.lng };
@@ -2000,6 +2204,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       resetSimulatorDatabase,
       safetyIncidents,
       triggerSOSAlert,
+      raiseTripDispute,
+      adminAuditLogs,
+      logAdminAction,
       modalConfig,
       showModal,
       hideModal

@@ -120,8 +120,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
           <ArrowLeft size={18} color="#5B21B6" />
         </button>
         <div>
-          <div style={{ fontWeight: '800', fontSize: '16px', color: '#5B21B6' }}>UNIBEN Ride</div>
-          <div style={{ fontSize: '11px', color: '#9CA3AF' }}>Campus Transport</div>
+          <div style={{ fontWeight: '800', fontSize: '16px', color: '#5B21B6' }}>USRide</div>
+          <div style={{ fontSize: '11px', color: '#9CA3AF' }}>UNIBEN Smart Campus Mobility</div>
         </div>
       </div>
 
@@ -131,10 +131,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
         {mode === 'select' && (
           <>
             <h2 style={{ fontSize: '28px', fontWeight: '900', color: '#1e1040', marginBottom: '8px' }}>
-              Welcome 👋
+              Welcome to USRide 👋
             </h2>
             <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '32px' }}>
-              How are you using UNIBEN Ride today?
+              How are you using USRide today?
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -146,7 +146,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
               }}>
                 <div style={{ fontSize: '28px', marginBottom: '8px' }}>🛺</div>
                 <div style={{ fontWeight: '800', fontSize: '18px' }}>I need a Ride</div>
-                <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '4px' }}>Book USRide Keke or UCRide Cab</div>
+                <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '4px' }}>Book a USRide Solar Keke or Campus Cab</div>
               </button>
 
               <button onClick={() => setMode('driver-login')} style={{
@@ -217,7 +217,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
             </button>
 
             <p style={{ textAlign: 'center', fontSize: '13px', color: '#6B7280', marginTop: '20px' }}>
-              New to UNIBEN Ride?{' '}
+              New to USRide?{' '}
               <span onClick={() => { setMode('rider-register'); setError(''); }}
                 style={{ color: '#5B21B6', fontWeight: '700', cursor: 'pointer' }}>
                 Create Account
@@ -230,7 +230,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
         {mode === 'rider-register' && (
           <>
             <h2 style={{ fontSize: '26px', fontWeight: '900', color: '#1e1040', marginBottom: '6px' }}>Create Account</h2>
-            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '24px' }}>Join UNIBEN Ride with a password-protected wallet.</p>
+            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '24px' }}>Join USRide with a password-protected campus wallet.</p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
               <div>
@@ -372,7 +372,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
             }}>
               <p style={{ fontSize: '12px', color: '#92400E', margin: 0, lineHeight: 1.6 }}>
                 <strong>⚠️ No Driver ID?</strong><br />
-                Contact the UNIBEN Ride Admin to get registered as a driver on the platform.
+                Contact the USRide Admin to get registered as a driver on the platform.
               </p>
             </div>
           </>

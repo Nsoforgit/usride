@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useUSRide, Keke, Trip, LANDMARKS } from '../context/USRideContext';
+import { useUSRide, Keke, Trip, LANDMARKS, DAILY_PAYOUT_LIMIT_NGN } from '../context/USRideContext';
 import { UnibenMap } from '../components/UnibenMap';
-import { calculateETA, getDistanceMeters } from '../utils/geofence';
+import { calculateETA, getDistanceMeters, estimateTripsLeftAboveReserve, getTripBoardingCode, KEKE_BATTERY_SPEC } from '../utils/geofence';
 import { synthSound } from '../utils/audio';
 import { useUserLocation } from '../hooks/useUserLocation';
 import { 
   ToggleLeft, ToggleRight, Battery, User, LogOut, ArrowRight, 
   MapPin, CheckCircle, Navigation, DollarSign, Wallet, ArrowUpRight,
   TrendingUp, RefreshCw, X, Sliders, Play, Award,
-  Eye, EyeOff
+  Eye, EyeOff, QrCode, AlertTriangle
 } from 'lucide-react';
 
 const NIGERIAN_BANKS = [
@@ -213,7 +213,7 @@ export const DriverView: React.FC = () => {
           if (prev?.id === pendingRequest.id) {
             return pendingRequest; // Update object reference without resetting countdown timer
           }
-          setTimerCount(90); // New trip offer: start fresh 90s countdown
+          setTimerCount(30); // New trip offer: start fresh 30s countdown before cascading to next nearest driver
           return pendingRequest;
         });
       }
@@ -222,7 +222,7 @@ export const DriverView: React.FC = () => {
     }
   }, [trips, currentDriver, currentKeke, driverActiveTrip]);
 
-  // 90-second countdown timer for incoming request
+  // 30-second countdown timer for incoming request (cascades to next nearest driver if not accepted)
   useEffect(() => {
     if (!incomingTrip) return;
 
@@ -232,7 +232,7 @@ export const DriverView: React.FC = () => {
           clearInterval(timer);
           declineTrip(incomingTrip.id);
           setIncomingTrip(null);
-          return 90;
+          return 30;
         }
         return prev - 1;
       });
@@ -312,8 +312,8 @@ export const DriverView: React.FC = () => {
         <div className="phone-content" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
             <div className="logo-badge" style={{ margin: '0 auto 10px auto', background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white' }}>DR</div>
-            <h2 style={{ fontSize: '24px', fontWeight: '800' }}>USRide / UCRide</h2>
-            <p style={{ fontSize: '12px', color: '#a7f3d0', marginTop: '4px' }}>UNIBEN Campus Driver Portal</p>
+            <h2 style={{ fontSize: '24px', fontWeight: '800' }}>USRide Driver</h2>
+            <p style={{ fontSize: '12px', color: '#a7f3d0', marginTop: '4px' }}>UNIBEN Smart Campus Driver Portal</p>
           </div>
 
           <form onSubmit={handleDriverLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -348,8 +348,29 @@ export const DriverView: React.FC = () => {
     );
   }
 
-  // Calculated estimates based on sliders
-  const estimatedTripsRemaining = Math.max(1, Math.round((energySliderVal / 100) * 16));
+  // Field-calibrated route distance & trips left above 40% reserve
+  const activeRouteDistanceKm = driverActiveTrip
+    ? Math.max(0.5, (getDistanceMeters(
+        driverActiveTrip.pickupLocation.lat,
+        driverActiveTrip.pickupLocation.lng,
+        driverActiveTrip.destinationLocation.lat,
+        driverActiveTrip.destinationLocation.lng
+      ) / 1000) * 1.2)
+    : KEKE_BATTERY_SPEC.avgTripDistanceKm;
+  const estimatedTripsRemaining = estimateTripsLeftAboveReserve(energySliderVal, activeRouteDistanceKm);
+  const currentTripsRemaining = estimateTripsLeftAboveReserve(currentKeke.currentBatteryPercent, activeRouteDistanceKm);
+
+  // Calculate daily payouts in last 24h for daily limit indicator
+  const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
+  const withdrawnLast24h = transactions
+    .filter(tx =>
+      tx.userId === currentDriver.id &&
+      tx.userType === 'driver' &&
+      tx.type === 'withdrawal' &&
+      new Date(tx.createdAt).getTime() >= oneDayAgoMs
+    )
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const remainingDailyPayoutAllowance = Math.max(0, DAILY_PAYOUT_LIMIT_NGN - withdrawnLast24h);
 
   return (
     <div className="phone-screen">
@@ -357,7 +378,7 @@ export const DriverView: React.FC = () => {
       <div className="phone-navbar" style={{ backgroundColor: currentDriver.vehicleType === 'keke' ? '#064e3b' : '#1e3a8a' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ color: 'var(--uniben-gold)' }}><Award size={18} /></span>
-          <h2>{currentDriver.vehicleType === 'keke' ? 'USRide Driver' : 'UCRide Driver'}</h2>
+          <h2>USRide Driver ({currentDriver.vehicleType === 'keke' ? 'Keke' : 'Cab'})</h2>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button 
@@ -372,7 +393,7 @@ export const DriverView: React.FC = () => {
             title="My Profile"
           >
             <img 
-              src={currentDriver.photo || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80'} 
+              src={currentDriver.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentDriver.name)}&background=064e3b&color=fff&bold=true`} 
               alt="Profile"
               style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.6)' }}
             />
@@ -426,7 +447,7 @@ export const DriverView: React.FC = () => {
                       textAlign: 'left'
                     }}>
                       <img 
-                        src={riderInfo.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'} 
+                        src={riderInfo.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(riderInfo.name)}&background=047857&color=fff&bold=true`} 
                         alt={riderInfo.name}
                         style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '2.5px solid var(--uniben-gold)' }}
                       />
@@ -497,7 +518,7 @@ export const DriverView: React.FC = () => {
             
             <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '20px' }}>
               <img 
-                src={editPhoto || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80'} 
+                src={editPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentDriver.name)}&background=064e3b&color=fff&bold=true`} 
                 alt="Profile Preview"
                 style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--uniben-green)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
               />
@@ -539,7 +560,7 @@ export const DriverView: React.FC = () => {
                 <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Profile Photo</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <img
-                    src={editPhoto || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80'}
+                    src={editPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentDriver.name)}&background=064e3b&color=fff&bold=true`}
                     alt="Preview"
                     style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${currentDriver.vehicleType === 'keke' ? '#064e3b' : '#1e3a8a'}`, flexShrink: 0 }}
                   />
@@ -631,18 +652,29 @@ export const DriverView: React.FC = () => {
             {currentDriver.vehicleType === 'keke' ? (
               <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Estimated Capacity metrics</span>
-                  <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--uniben-green)', marginTop: '4px' }}>
+                  <span style={{ fontSize: '11px', color: '#047857', backgroundColor: '#ecfdf5', padding: '3px 10px', borderRadius: '12px', fontWeight: '700', border: '1px solid #a7f3d0' }}>
+                    Calibrated estimate (Manual Input)
+                  </span>
+                  <div style={{ fontSize: '28px', fontWeight: '800', color: energySliderVal <= 40 ? '#ef4444' : 'var(--uniben-green)', marginTop: '8px' }}>
                     {estimatedTripsRemaining} Trips Left
                   </div>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Manual calibration slider</span>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    Counted above the <strong>40% reserve floor</strong> (~{activeRouteDistanceKm.toFixed(1)} km route)
+                  </span>
                 </div>
+
+                {energySliderVal <= 40 && (
+                  <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px', fontSize: '11px', color: '#991b1b', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <AlertTriangle size={16} color="#dc2626" />
+                    <span>🔌 Go and charge! Battery is at or below the 40% safe reserve floor.</span>
+                  </div>
+                )}
 
                 {/* Slider 1: Battery % */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold' }}>
-                    <span>Keke Battery (%)</span>
-                    <span style={{ color: 'var(--uniben-green)' }}>{energySliderVal}%</span>
+                    <span>Keke Battery (Calibrated estimate)</span>
+                    <span style={{ color: energySliderVal <= 40 ? '#ef4444' : 'var(--uniben-green)' }}>{energySliderVal}%</span>
                   </div>
                   <input 
                     type="range" 
@@ -673,7 +705,7 @@ export const DriverView: React.FC = () => {
                 </div>
 
                 <div style={{ backgroundColor: '#f0fdf4', padding: '10px', borderRadius: '8px', fontSize: '11px', color: '#166534', border: '1px solid #bbf7d0' }}>
-                  💡 Solar tricycles consume ~6% battery per campus cross-trip on average.
+                  💡 <strong>Field-calibrated rate:</strong> ~1% battery per km (~0.96%–1.06%/km). Trips left are calculated from route distance only above the <strong>40% battery reserve</strong>.
                 </div>
 
                 <button className="primary-btn" onClick={handleApplyEnergySettings}>
@@ -751,7 +783,15 @@ export const DriverView: React.FC = () => {
 
             {/* Withdraw form */}
             <form onSubmit={handleWithdrawalSubmit} className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <h4 style={{ fontSize: '13px', fontWeight: '700' }}>Withdraw to Bank (Paystack Transfer)</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: '700' }}>Withdraw to Bank (Paystack Transfer)</h4>
+                <span style={{ fontSize: '10px', color: '#047857', backgroundColor: '#ecfdf5', padding: '2px 8px', borderRadius: '10px', fontWeight: '700', border: '1px solid #a7f3d0' }}>
+                  Limit: ₦{DAILY_PAYOUT_LIMIT_NGN.toLocaleString()}/day
+                </span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b', backgroundColor: '#f8fafc', padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                🛡️ <strong>Daily Payout Guard:</strong> Remaining today: <strong>₦{remainingDailyPayoutAllowance.toLocaleString()}</strong> (Used 24h: ₦{withdrawnLast24h.toLocaleString()})
+              </div>
               
               <div>
                 <label style={{ fontSize: '11px', color: '#64748b' }}>Select Bank</label>
@@ -918,10 +958,10 @@ export const DriverView: React.FC = () => {
                   
                   {/* Battery Level Indicator or Cab Profit Tracker */}
                   {currentDriver.vehicleType === 'keke' ? (
-                    <div className="glass-panel-dark" style={{ padding: '8px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }}>
-                      <Battery size={14} style={{ color: currentKeke.currentBatteryPercent > 30 ? '#10b981' : '#ef4444' }} />
+                    <div className="glass-panel-dark" style={{ padding: '8px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }} title="Calibrated estimate (~1%/km above 40% reserve)">
+                      <Battery size={14} style={{ color: currentKeke.currentBatteryPercent > 40 ? '#10b981' : '#ef4444' }} />
                       <span style={{ fontWeight: 'bold' }}>{currentKeke.currentBatteryPercent}%</span>
-                      <span style={{ opacity: 0.6 }}>({currentKeke.estimatedHoursRemaining} hrs)</span>
+                      <span style={{ opacity: 0.85, fontSize: '9px' }}>· Calibrated est. ({currentTripsRemaining} trips &gt;40%)</span>
                     </div>
                   ) : (
                     <div className="glass-panel-dark" style={{ padding: '8px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', backgroundColor: 'rgba(37, 99, 235, 0.9)' }}>
@@ -1005,6 +1045,41 @@ export const DriverView: React.FC = () => {
                 {/* IDLE state switches */}
                 {driverStep === 'idle' && (
                   <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {currentDriver.vehicleType === 'keke' && currentKeke.currentBatteryPercent <= 43 && (
+                      <div style={{
+                        backgroundColor: currentKeke.currentBatteryPercent <= 40 ? '#fef2f2' : '#fffbeb',
+                        border: `1px solid ${currentKeke.currentBatteryPercent <= 40 ? '#fecaca' : '#fde68a'}`,
+                        color: currentKeke.currentBatteryPercent <= 40 ? '#991b1b' : '#92400e',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px'
+                      }}>
+                        <span>
+                          🔌 <strong>Go and charge!</strong> Battery is at {currentKeke.currentBatteryPercent}% ({currentKeke.currentBatteryPercent <= 40 ? 'At 40% reserve floor — new trips blocked' : 'Approaching 40% reserve'}).
+                        </span>
+                        <button
+                          onClick={chargeKeke}
+                          style={{
+                            border: 'none',
+                            backgroundColor: '#059669',
+                            color: 'white',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            fontSize: '10px',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          Charge Now
+                        </button>
+                      </div>
+                    )}
                     
                     {/* Toggle Online / Offline */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1086,23 +1161,76 @@ export const DriverView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Navigation Actions */}
-                    <div style={{ marginTop: '6px' }}>
+                    {/* Boarding Check (Code/QR + 50m Proximity) & Navigation Actions */}
+                    <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {driverActiveTrip.status === 'accepted' ? (
-                        <button 
-                          className="primary-btn" 
-                          style={{ width: '100%' }}
-                          onClick={() => confirmBoarded(driverActiveTrip.id)}
-                        >
-                          <CheckCircle size={16} /> Confirm Rider Boarded
-                        </button>
+                        <>
+                          {(() => {
+                            const boardingCode = getTripBoardingCode(driverActiveTrip.id);
+                            const distToPickup = Math.round(
+                              getDistanceMeters(
+                                currentKeke.lat,
+                                currentKeke.lng,
+                                driverActiveTrip.pickupLocation.lat,
+                                driverActiveTrip.pickupLocation.lng
+                              )
+                            );
+                            const isWithin50m = distToPickup <= 50;
+                            return (
+                              <div style={{
+                                backgroundColor: '#f0fdf4',
+                                border: '1.5px dashed #059669',
+                                borderRadius: '10px',
+                                padding: '10px 12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '10px'
+                              }}>
+                                <div>
+                                  <div style={{ fontSize: '10px', fontWeight: '800', color: '#065f46', textTransform: 'uppercase' }}>
+                                    🎫 Driver Boarding Code / QR
+                                  </div>
+                                  <div style={{ fontSize: '22px', fontWeight: '900', letterSpacing: '4px', color: '#047857', marginTop: '2px' }}>
+                                    {boardingCode}
+                                  </div>
+                                  <div style={{ fontSize: '9px', color: isWithin50m ? '#059669' : '#b45309', fontWeight: '700', marginTop: '2px' }}>
+                                    {isWithin50m
+                                      ? `✓ Proximity Verified (${distToPickup}m ≤ 50m)`
+                                      : `📍 ${distToPickup}m to pickup (Verify ≤ 50m at boarding)`}
+                                  </div>
+                                </div>
+                                <div style={{
+                                  backgroundColor: 'white',
+                                  padding: '8px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #a7f3d0',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  gap: '2px'
+                                }}>
+                                  <QrCode size={28} color="#064e3b" />
+                                  <span style={{ fontSize: '8px', fontWeight: '700', color: '#064e3b' }}>SCAN QR</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          <button 
+                            className="primary-btn" 
+                            style={{ width: '100%' }}
+                            onClick={() => confirmBoarded(driverActiveTrip.id, getTripBoardingCode(driverActiveTrip.id))}
+                          >
+                            <CheckCircle size={16} /> Verify Boarding Code &amp; Start Trip
+                          </button>
+                        </>
                       ) : (
                         <button 
                           className="gold-btn" 
                           style={{ width: '100%' }}
                           onClick={() => completeTrip(driverActiveTrip.id)}
                         >
-                          <Play size={14} /> End Trip (Collect Fare)
+                          <Play size={14} /> End Trip (Settle to School Ledger)
                         </button>
                       )}
                     </div>
