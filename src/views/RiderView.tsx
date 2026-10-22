@@ -50,11 +50,17 @@ export const RiderView: React.FC = () => {
   const [registerPhone, setRegisterPhone] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
+  const [registerNdpaConsent, setRegisterNdpaConsent] = useState(false);
   const [resetEmailInput, setResetEmailInput] = useState('');
   const [resetPhoneInput, setResetPhoneInput] = useState('');
   const [resetNewPassword, setResetNewPassword] = useState('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
+
+  // SOS Hardening states
+  const [showSosSheet, setShowSosSheet] = useState(false);
+  const [sosCategory, setSosCategory] = useState('Medical Emergency');
+  const [sosDescription, setSosDescription] = useState('');
   
   // Booking states
   const [bookingStep, setBookingStep] = useState<'idle' | 'locations' | 'ride-type' | 'searching' | 'active' | 'rating' | 'wallet' | 'history' | 'profile'>('idle');
@@ -258,6 +264,14 @@ export const RiderView: React.FC = () => {
       });
       return;
     }
+    if (!registerNdpaConsent) {
+      showModal({
+        title: "NDPA Privacy Consent Required",
+        message: "Please accept the Nigeria Data Protection Act (NDPA) 2023 privacy & data consent notice to create an account.",
+        type: 'warning'
+      });
+      return;
+    }
     const res = await riderRegister(registerName, registerEmail, registerRole, registerPhone, registerPassword);
     if (!res.success) {
       showModal({
@@ -397,24 +411,73 @@ export const RiderView: React.FC = () => {
       },
       callback: (response: { reference: string }) => {
         // Payment was completed on Paystack's side.
-        // Update balance locally and in database immediately (belt-and-suspenders alongside webhook)
+        // Update balance locally and in database immediately with idempotency reference guard
         console.log('[Paystack Live] Payment successful, reference:', response.reference);
-        riderTopUpWallet(amt);
+        const credited = riderTopUpWallet(amt, response.reference);
         setIsProcessingTopup(false);
-        synthSound.playCashRegister();
-        setTopupSuccess(true);
-        setTimeout(() => {
-          setTopupSuccess(false);
-          setBookingStep('idle');
-        }, 2500);
+        if (credited) {
+          synthSound.playCashRegister();
+          setTopupSuccess(true);
+          setTimeout(() => {
+            setTopupSuccess(false);
+            setBookingStep('idle');
+          }, 2500);
+        }
       },
       onClose: () => {
         // User closed the popup without completing payment
         setIsProcessingTopup(false);
+        showModal({
+          title: 'Payment Window Closed',
+          message: 'No funds were deducted. If you initiated a bank transfer, your wallet will automatically update once Paystack confirms the transaction.',
+          type: 'info'
+        });
       },
     });
 
     handler.openIframe();
+  };
+
+  const handleViewReceipt = (receiptData: {
+    id: string;
+    typeLabel: string;
+    amount: number;
+    description: string;
+    dateStr: string;
+    reference?: string;
+  }) => {
+    const receiptText = [
+      '========================================',
+      '       USRIDE CAMPUS TRANSIT RECEIPT    ',
+      '   University of Benin (UNIBEN) Shuttle ',
+      '========================================',
+      `Receipt ID  : ${receiptData.id}`,
+      receiptData.reference ? `Paystack Ref: ${receiptData.reference}` : null,
+      `Rider Name  : ${currentRider?.name || 'Campus Rider'}`,
+      `Rider Email : ${currentRider?.email || 'N/A'}`,
+      `Type        : ${receiptData.typeLabel}`,
+      `Details     : ${receiptData.description}`,
+      `Amount      : ₦${receiptData.amount.toLocaleString()}`,
+      `Date & Time : ${receiptData.dateStr}`,
+      `Status      : CONFIRMED & VERIFIED`,
+      '========================================',
+      'Protected under NDPA 2023 • Powered by USRide',
+    ].filter(Boolean).join('\n');
+
+    showModal({
+      title: '🧾 Official USRide Receipt',
+      message: `${receiptData.typeLabel}\n• Details: ${receiptData.description}\n• Amount: ₦${receiptData.amount.toLocaleString()}\n• Date: ${receiptData.dateStr}\n• Ref: ${receiptData.reference || receiptData.id}\n\nClick Confirm below to download a copy of this receipt (.txt).`,
+      type: 'success',
+      onConfirm: () => {
+        const blob = new Blob([receiptText], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `USRide-Receipt-${receiptData.id.slice(-8)}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    });
   };
 
   const handleCardSubmit = (e: React.FormEvent) => {
@@ -670,6 +733,18 @@ export const RiderView: React.FC = () => {
                   required
                 />
               </div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: 'rgba(15, 23, 42, 0.5)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', fontSize: '11px', color: '#cbd5e1', cursor: 'pointer', lineHeight: 1.4 }}>
+                <input
+                  type="checkbox"
+                  checked={registerNdpaConsent}
+                  onChange={(e) => setRegisterNdpaConsent(e.target.checked)}
+                  style={{ marginTop: '2px', accentColor: 'var(--uniben-gold)' }}
+                  required
+                />
+                <span>
+                  <strong style={{ color: '#fff' }}>NDPA 2023 Data Privacy Consent:</strong> Only your Name, Phone, Email, and Role are collected for campus shuttle dispatch and safety. All operational records belong to the University of Benin.
+                </span>
+              </label>
               <button className="primary-btn" type="submit">Create Account</button>
               
               <div style={{ textAlign: 'center', fontSize: '12px', marginTop: '10px' }}>
@@ -1055,14 +1130,40 @@ export const RiderView: React.FC = () => {
                   <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: '12px' }}>No transactions yet.</div>
                 ) : (
                   transactions.filter(tx => tx.userId === currentRider.id).map(tx => (
-                    <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '11px' }}>
+                    <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '11px' }}>
                       <div>
                         <strong>{tx.description}</strong>
-                        <div style={{ color: '#94a3b8' }}>{new Date(tx.createdAt).toLocaleTimeString()}</div>
+                        <div style={{ color: '#94a3b8' }}>{new Date(tx.createdAt).toLocaleString()}</div>
                       </div>
-                      <span style={{ color: tx.type === 'credit' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
-                        {tx.type === 'credit' ? '+' : '-'}₦{tx.amount}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: tx.type === 'credit' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
+                          {tx.type === 'credit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleViewReceipt({
+                            id: tx.id,
+                            typeLabel: tx.type === 'credit' ? 'WALLET TOP-UP / CREDIT' : 'RIDE FARE DEBIT',
+                            amount: tx.amount,
+                            description: tx.description,
+                            dateStr: new Date(tx.createdAt).toLocaleString(),
+                            reference: tx.reference
+                          })}
+                          style={{
+                            border: '1px solid #cbd5e1',
+                            backgroundColor: '#f8fafc',
+                            color: '#334155',
+                            borderRadius: '6px',
+                            padding: '4px 6px',
+                            fontSize: '10px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                          title="View or Download Official Receipt"
+                        >
+                          🧾 Receipt
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -1112,7 +1213,31 @@ export const RiderView: React.FC = () => {
 
                     <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
                       <span>Type: <strong>{t.vehicleType === 'keke' ? 'Solar Keke' : 'Campus Cab'} ({t.rideType})</strong></span>
-                      <strong style={{ color: '#1e293b' }}>₦{t.totalFare + (t.transferFee ?? (t.rideType === 'drop' ? 50 : 10 * (t.seatsBooked || 1)))}</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <strong style={{ color: '#1e293b' }}>₦{(t.totalFare + (t.transferFee ?? (t.rideType === 'drop' ? 50 : 10 * (t.seatsBooked || 1)))).toLocaleString()}</strong>
+                        <button
+                          type="button"
+                          onClick={() => handleViewReceipt({
+                            id: t.id,
+                            typeLabel: `CAMPUS SHUTTLE TRIP (${t.status.toUpperCase()})`,
+                            amount: t.totalFare + (t.transferFee ?? (t.rideType === 'drop' ? 50 : 10 * (t.seatsBooked || 1))),
+                            description: `${t.pickupLandmark} ➔ ${t.destinationLandmark} (${t.vehicleType === 'keke' ? 'Solar Keke' : 'Campus Cab'} • ${t.rideType.toUpperCase()})`,
+                            dateStr: new Date(t.completedAt || t.createdAt).toLocaleString()
+                          })}
+                          style={{
+                            border: '1px solid #cbd5e1',
+                            backgroundColor: '#f8fafc',
+                            color: '#047857',
+                            borderRadius: '6px',
+                            padding: '3px 6px',
+                            fontSize: '10px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🧾 Receipt
+                        </button>
+                      </div>
                     </div>
 
                     {t.status === 'completed' && (
@@ -1232,30 +1357,9 @@ export const RiderView: React.FC = () => {
                   
                   <button 
                     onClick={() => {
-                      showModal({
-                        title: "🚨 SOS CAMPUS EMERGENCY ALERT",
-                        message: "Please describe the issue (e.g., medical emergency, harassment, security threat):",
-                        type: 'security',
-                        inputPlaceholder: "Explain the emergency in detail...",
-                        onInputSubmit: (description) => {
-                          synthSound.playAlert();
-                          triggerSOSAlert(currentRider.id, activeTrip?.pickupLandmark || LANDMARKS.find(l => l.id === pickupId)?.name || 'Main Gate (Ugbowo)', description);
-                          
-                          let driverInfoText = "";
-                          if (activeTrip && activeTrip.driverId) {
-                            const matchedDriver = drivers.find(d => d.id === activeTrip.driverId);
-                            if (matchedDriver) {
-                              driverInfoText = `\n\n🚨 ACTIVE DRIVER CAPTURED:\nName: ${matchedDriver.name}\nPhone: ${matchedDriver.phoneNumber || 'N/A'}\nVehicle: ${selectedKeke?.plateNumber || 'N/A'}`;
-                            }
-                          }
-
-                          showModal({
-                            title: "⚠️ SOS TRANSMITTED",
-                            message: `SOS EMERGENCY ALERT TRANSMITTED TO UNIBEN HUB!\nSecurity personnel have been dispatched to your current snapped location.${driverInfoText}`,
-                            type: 'success'
-                          });
-                        }
-                      });
+                      setSosCategory('Medical Emergency');
+                      setSosDescription('');
+                      setShowSosSheet(true);
                     }}
                     style={{
                       border: 'none',
@@ -1276,6 +1380,141 @@ export const RiderView: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Structured SOS Campus Emergency Modal / Sheet (3.2 SOS Hardening) */}
+              {showSosSheet && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                  backdropFilter: 'blur(6px)',
+                  zIndex: 999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px'
+                }}>
+                  <div style={{
+                    backgroundColor: '#0f172a',
+                    border: '2px solid #ef4444',
+                    borderRadius: '16px',
+                    padding: '16px',
+                    width: '100%',
+                    maxWidth: '340px',
+                    color: '#fff',
+                    boxShadow: '0 10px 30px rgba(239, 68, 68, 0.35)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', fontWeight: '800', fontSize: '14px' }}>
+                        <ShieldAlert size={18} /> SOS CAMPUS SECURITY
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowSosSheet(false)}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#cbd5e1', margin: 0, lineHeight: 1.4 }}>
+                      Select an emergency category to alert UNIBEN Campus Security Hub. Phone numbers are masked for privacy and alerts have a 60s rate-limit cooldown.
+                    </p>
+                    <div>
+                      <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '700' }}>Incident Category</label>
+                      <select
+                        className="landmark-select-item"
+                        style={{ width: '100%', marginTop: '4px', color: '#1e293b', fontWeight: '700', fontSize: '12px' }}
+                        value={sosCategory}
+                        onChange={(e) => setSosCategory(e.target.value)}
+                      >
+                        <option value="Medical Emergency">🚑 Medical Emergency</option>
+                        <option value="Harassment / Personal Safety">🛡️ Harassment / Personal Safety</option>
+                        <option value="Vehicle Breakdown / Accident">⚠️ Vehicle Breakdown / Accident</option>
+                        <option value="Reckless Driving / Route Deviation">🚨 Reckless Driving / Route Deviation</option>
+                        <option value="Other Campus Security Issue">🔒 Other Campus Security Issue</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '700' }}>Additional Details (Optional)</label>
+                      <textarea
+                        className="landmark-select-item"
+                        style={{ width: '100%', marginTop: '4px', color: '#1e293b', height: '60px', fontSize: '12px', resize: 'none' }}
+                        placeholder="Describe location landmark or situation..."
+                        value={sosDescription}
+                        onChange={(e) => setSosDescription(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowSosSheet(false)}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          borderRadius: '8px',
+                          border: '1px solid #475569',
+                          background: 'transparent',
+                          color: '#cbd5e1',
+                          fontWeight: '700',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const landmarkName = activeTrip?.pickupLandmark || LANDMARKS.find(l => l.id === pickupId)?.name || 'Main Gate (Ugbowo)';
+                          const sent = triggerSOSAlert(
+                            currentRider.id,
+                            landmarkName,
+                            sosDescription.trim() || sosCategory,
+                            sosCategory
+                          );
+                          setShowSosSheet(false);
+                          if (!sent) return;
+
+                          synthSound.playAlert();
+                          let driverInfoText = '';
+                          if (activeTrip && activeTrip.driverId) {
+                            const matchedDriver = drivers.find(d => d.id === activeTrip.driverId);
+                            if (matchedDriver) {
+                              const rawPhone = matchedDriver.phoneNumber || '';
+                              const maskedDriverPhone = rawPhone.length >= 7
+                                ? `${rawPhone.slice(0, 4)}***${rawPhone.slice(-3)}`
+                                : 'N/A';
+                              driverInfoText = `\n\n🚨 ACTIVE DRIVER CAPTURED:\nName: ${matchedDriver.name}\nPhone (Masked): ${maskedDriverPhone}\nVehicle: ${selectedKeke?.plateNumber || 'N/A'}`;
+                            }
+                          }
+
+                          showModal({
+                            title: '⚠️ SOS TRANSMITTED',
+                            message: `[${sosCategory.toUpperCase()}] TRANSMITTED TO UNIBEN SECURITY HUB!\nSecurity personnel have been dispatched to ${landmarkName}.${driverInfoText}`,
+                            type: 'success'
+                          });
+                        }}
+                        style={{
+                          flex: 1.4,
+                          padding: '10px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#ef4444',
+                          color: '#fff',
+                          fontWeight: '800',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🚨 Transmit SOS
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Booking Step Overlay panel */}
               <div className="map-overlay-bottom" style={{ display: hideOverlay ? 'none' : 'block' }}>

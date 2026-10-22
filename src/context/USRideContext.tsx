@@ -254,6 +254,7 @@ const LS_KEYS = {
   transactions: 'usride_transactions',
   safetyIncidents: 'usride_safety_incidents',
   adminAuditLogs: 'usride_admin_audit_logs',
+  processedRefs: 'usride_processed_paystack_refs',
   currentRiderId: 'usride_current_rider_id',
   currentDriverId: 'usride_current_driver_id',
 };
@@ -457,7 +458,7 @@ interface USRideContextType {
   // Booking Functions
   bookRide: (rideType: 'shared' | 'drop', vehicleType: 'keke' | 'cab', pickupId: string, destId: string, seatsBooked?: number) => Promise<Trip | null>;
   cancelRide: (tripId: string) => void;
-  riderTopUpWallet: (amount: number) => void;
+  riderTopUpWallet: (amount: number, reference?: string) => boolean;
   addRiderCard: (card: Omit<SavedCard, 'id'>) => void;
   removeRiderCard: (cardId: string) => void;
   
@@ -475,10 +476,12 @@ interface USRideContextType {
   updateDriverProfile: (phoneNumber: string, photo: string) => void;
   resetSimulatorDatabase: () => void;
   safetyIncidents: SafetyIncident[];
-  triggerSOSAlert: (riderId: string, landmarkName: string, description: string) => void;
+  triggerSOSAlert: (riderId: string, landmarkName: string, description: string, category?: string) => boolean;
   raiseTripDispute: (tripId: string, reason: string) => void;
   adminAuditLogs: AdminAuditEntry[];
   logAdminAction: (action: string, details: string) => void;
+  isNetworkOnline: boolean;
+  isSyncingNetwork: boolean;
   modalConfig: AppNotification | null;
   showModal: (config: AppNotification) => void;
   hideModal: () => void;
@@ -506,6 +509,12 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   ]));
   const [modalConfig, setModalConfig] = useState<AppNotification | null>(null);
+  const [processedRefs, setProcessedRefs] = useState<string[]>(() => lsGet(LS_KEYS.processedRefs, []));
+  const [lastSosTimes, setLastSosTimes] = useState<Record<string, number>>({});
+  const [isNetworkOnline, setIsNetworkOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [isSyncingNetwork, setIsSyncingNetwork] = useState<boolean>(false);
 
   const logAdminAction = (action: string, details: string) => {
     const entry: AdminAuditEntry = {
@@ -545,6 +554,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => { lsSet(LS_KEYS.transactions, transactions); }, [transactions]);
   useEffect(() => { lsSet(LS_KEYS.safetyIncidents, safetyIncidents); }, [safetyIncidents]);
   useEffect(() => { lsSet(LS_KEYS.adminAuditLogs, adminAuditLogs); }, [adminAuditLogs]);
+  useEffect(() => { lsSet(LS_KEYS.processedRefs, processedRefs); }, [processedRefs]);
   useEffect(() => {
     if (currentRider) lsSet(LS_KEYS.currentRiderId, currentRider.id);
     else lsDel(LS_KEYS.currentRiderId);
@@ -554,8 +564,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     else lsDel(LS_KEYS.currentDriverId);
   }, [currentDriver]);
 
-  // ─── 3. Supabase bootstrap — load fresh data on mount ─────────────────────
-  const refreshLiveDashboardData = async () => {
+  // ─── 3. Supabase bootstrap & Weak-Network Auto-Retry ──────────────────────
+  const refreshLiveDashboardData = async (retryCount = 0) => {
+    setIsSyncingNetwork(true);
     try {
       const [sbRiders, sbDrivers, sbVehicles, sbTrips, sbTx, sbSos] = await Promise.all([
         fetchAllRiders(), fetchAllDrivers(), fetchAllVehicles(),
@@ -572,13 +583,35 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const driverId = localStorage.getItem(LS_KEYS.currentDriverId);
       if (riderId) { const r = sbRiders.find(x => x.id === riderId); if (r) setCurrentRider(r); }
       if (driverId){ const d = sbDrivers.find(x => x.id === driverId); if (d) setCurrentDriver(d); }
+      setIsNetworkOnline(true);
     } catch (err) {
       console.warn('[USRide] Supabase unreachable, running on local cache:', err);
+      if (retryCount < 2 && (typeof navigator === 'undefined' || navigator.onLine)) {
+        setTimeout(() => {
+          refreshLiveDashboardData(retryCount + 1);
+        }, 2500 * (retryCount + 1));
+      }
+    } finally {
+      setIsSyncingNetwork(false);
     }
   };
 
   useEffect(() => {
     refreshLiveDashboardData();
+
+    const handleOnline = () => {
+      setIsNetworkOnline(true);
+      refreshLiveDashboardData();
+    };
+    const handleOffline = () => {
+      setIsNetworkOnline(false);
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1521,9 +1554,22 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // Top Up Rider Wallet
-  const riderTopUpWallet = (amount: number) => {
-    if (!currentRider) return;
+  // Top Up Rider Wallet (with Paystack Reference Idempotency Guard against double charges)
+  const riderTopUpWallet = (amount: number, reference?: string): boolean => {
+    if (!currentRider) return false;
+
+    const cleanRef = reference?.trim() || `PSTK-DEP-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+    // Idempotency check: prevent duplicate crediting of the same Paystack reference
+    if (
+      processedRefs.includes(cleanRef) ||
+      transactions.some(tx => tx.reference === cleanRef)
+    ) {
+      console.warn(`[Paystack Idempotency Guard] Duplicate reference ${cleanRef} ignored.`);
+      return false;
+    }
+
+    setProcessedRefs(prev => [cleanRef, ...prev.slice(0, 499)]);
 
     const newBalance = currentRider.walletBalance + amount;
 
@@ -1545,8 +1591,8 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       userType: 'rider',
       type: 'credit',
       amount,
-      reference: `PSTK-DEP-${Math.floor(Math.random() * 10000000)}`,
-      description: 'Wallet Top Up via Card',
+      reference: cleanRef,
+      description: 'Wallet Top Up via Paystack (₦100 Fee Waived ≤ ₦2,000)',
       createdAt: new Date().toISOString()
     };
     setTransactions(prev => [newTx, ...prev]);
@@ -1554,6 +1600,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Persist updated balance directly to database
     updateRiderBalance(currentRider.id, newBalance, currentRider.totalTrips).catch(console.error);
+    return true;
   };
 
   const addRiderCard = (card: Omit<SavedCard, 'id'>) => {
@@ -2059,7 +2106,21 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   };
 
-  const triggerSOSAlert = (riderId: string, landmarkName: string, description: string) => {
+  const triggerSOSAlert = (riderId: string, landmarkName: string, description: string, category = 'Security Threat'): boolean => {
+    // Rate-limit SOS alerts: 60-second cooldown per rider to prevent accidental spam
+    const nowMs = Date.now();
+    const lastTime = lastSosTimes[riderId] || 0;
+    if (nowMs - lastTime < 60000) {
+      const waitSecs = Math.ceil((60000 - (nowMs - lastTime)) / 1000);
+      showModal({
+        title: "⏱️ SOS Alert Cooldown Active",
+        message: `An emergency alert was already transmitted for your account less than a minute ago. UNIBEN Security has been notified. Please wait ${waitSecs}s before sending another alert.`,
+        type: 'warning'
+      });
+      return false;
+    }
+    setLastSosTimes(prev => ({ ...prev, [riderId]: nowMs }));
+
     const rider = riders.find(r => r.id === riderId);
     
     // Find active trip for this rider to capture assigned driver details
@@ -2077,22 +2138,31 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
+    const maskPhone = (p?: string) => {
+      if (!p || p.length < 7) return 'N/A';
+      return `${p.slice(0, 4)}***${p.slice(-4)}`;
+    };
+
+    const formattedDesc = `[${category.toUpperCase()}] ${description || 'Campus Emergency Assistance Requested'}`;
+
     const newIncident: SafetyIncident = {
       id: `sos-${Date.now()}`,
       riderId,
       riderName: rider?.name || 'Unknown Rider',
-      riderPhone: rider?.phoneNumber || 'N/A',
+      riderPhone: maskPhone(rider?.phoneNumber),
       landmarkName,
       timestamp: new Date().toISOString(),
       status: 'active',
-      description: description || 'General Emergency Alert',
+      description: formattedDesc,
       driverName: matchedDriver?.name,
-      driverPhone: matchedDriver?.phoneNumber || 'N/A',
+      driverPhone: maskPhone(matchedDriver?.phoneNumber),
       driverCode: matchedDriver?.driverIdCode,
       vehiclePlate: matchedKeke?.plateNumber
     };
     setSafetyIncidents(prev => [newIncident, ...prev]);
     insertIncident(newIncident).catch(console.error);
+    logAdminAction('SOS_ALERT_DISPATCHED', `Category: ${category} · Landmark: ${landmarkName} · Rider: ${rider?.name || riderId} (Phone Masked)`);
+    return true;
   };
 
   // 24-Hour Rider Trip Dispute Window
@@ -2313,6 +2383,8 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       raiseTripDispute,
       adminAuditLogs,
       logAdminAction,
+      isNetworkOnline,
+      isSyncingNetwork,
       modalConfig,
       showModal,
       hideModal

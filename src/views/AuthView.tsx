@@ -31,6 +31,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
   const [rRole, setRRole] = useState<'student' | 'staff' | 'other'>('student');
   const [rRegPassword, setRRegPassword] = useState('');
   const [rRegConfirmPassword, setRRegConfirmPassword] = useState('');
+  const [rNdpaConsent, setRNdpaConsent] = useState(false);
 
   // Rider forgot password
   const [rResetEmail, setRResetEmail] = useState('');
@@ -73,6 +74,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
     }
     if (rRegPassword !== rRegConfirmPassword) {
       setError('Passwords do not match. Please check and try again.'); return;
+    }
+    if (!rNdpaConsent) {
+      setError('Please accept the NDPA 2023 Data Privacy & University of Benin Consent notice to create an account.');
+      return;
     }
     setLoading(true); setError('');
     const res = await riderRegister(rName.trim(), rRegEmail.trim(), rRole, rPhone.trim(), rRegPassword);
@@ -381,6 +386,26 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
                     }}>{r}</button>
                   ))}
                 </div>
+              </div>
+
+              {/* NDPA 2023 Privacy & Consent Checkbox */}
+              <div style={{
+                backgroundColor: '#F5F3FF',
+                border: '1px solid #DDD6FE',
+                borderRadius: '12px',
+                padding: '12px'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', fontSize: '12px', color: '#374151', lineHeight: 1.45 }}>
+                  <input
+                    type="checkbox"
+                    checked={rNdpaConsent}
+                    onChange={e => setRNdpaConsent(e.target.checked)}
+                    style={{ marginTop: '3px', accentColor: '#5B21B6', width: '16px', height: '16px', flexShrink: 0 }}
+                  />
+                  <span>
+                    <strong>NDPA 2023 Data Privacy Consent:</strong> I consent to USRide collecting only my <strong>Name, Phone Number, Email, and Campus Role</strong> for ride dispatch and wallet settlement. All data is governed under the <strong>Nigeria Data Protection Act (NDPA) 2023</strong> and owned by the <strong>University of Benin (UNIBEN)</strong>.
+                  </span>
+                </label>
               </div>
             </div>
 

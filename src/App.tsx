@@ -34,7 +34,7 @@ const ViewLoadingFallback: React.FC = () => (
 type AppScreen = 'landing' | 'auth-rider' | 'auth-driver' | 'admin';
 
 const MainAppContent: React.FC = () => {
-  const { currentRider, currentDriver, activeView, setActiveView } = useUSRide();
+  const { currentRider, currentDriver, activeView, setActiveView, isNetworkOnline, isSyncingNetwork, refreshLiveDashboardData } = useUSRide();
   const [screen, setScreen] = useState<AppScreen>('landing');
   const [showSplash, setShowSplash] = useState(true);
 
@@ -50,6 +50,42 @@ const MainAppContent: React.FC = () => {
           transition={{ duration: 0.4 }}
           style={{ width: '100%', height: '100%' }}
         >
+          {!isNetworkOnline && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 9999,
+              backgroundColor: '#b91c1c',
+              color: 'white',
+              fontSize: '11px',
+              fontWeight: '700',
+              padding: '6px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+            }}>
+              <span>📡 Weak or Offline Signal — Operating on local campus cache. Changes will auto-sync when online.</span>
+              <button
+                type="button"
+                onClick={() => refreshLiveDashboardData()}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.5)',
+                  backgroundColor: 'rgba(255,255,255,0.15)',
+                  color: 'white',
+                  borderRadius: '6px',
+                  padding: '2px 8px',
+                  fontSize: '10px',
+                  fontWeight: '800',
+                  cursor: 'pointer'
+                }}
+              >
+                {isSyncingNetwork ? 'Retrying...' : 'Retry Now'}
+              </button>
+            </div>
+          )}
           <Suspense fallback={<ViewLoadingFallback />}>
             {(() => {
               // ── Logged-in as Rider ──────────────────────────────────────────────────
