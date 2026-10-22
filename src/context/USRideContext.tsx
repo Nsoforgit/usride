@@ -439,8 +439,10 @@ interface USRideContextType {
   // Auth Functions
   riderLogin: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   riderRegister: (name: string, email: string, role: 'student' | 'staff' | 'other', phoneNumber: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  riderResetPassword: (email: string, phoneNumber: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   riderLogout: () => void;
   driverLogin: (driverIdCode: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  driverResetPassword: (driverIdCode: string, emailOrPhone: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   driverLogout: () => void;
   
   // Driver Keke controls
@@ -938,6 +940,55 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCurrentRider(null);
   };
 
+  const riderResetPassword = async (
+    email: string,
+    phoneNumber: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (!cleanEmail) return { success: false, error: 'Please enter your registered email address.' };
+    if (cleanPhone.length < 4) return { success: false, error: 'Please enter your registered phone number to verify your identity.' };
+    if (!newPassword || newPassword.trim().length < 4) {
+      return { success: false, error: 'Your new password must be at least 4 characters long.' };
+    }
+
+    let currentRidersList = riders;
+    try {
+      const sbRiders = await fetchAllRiders();
+      if (sbRiders.length > 0) {
+        currentRidersList = sbRiders;
+        setRiders(sbRiders);
+      }
+    } catch { /* fallback to local state */ }
+
+    const found = currentRidersList.find(r => r.email.toLowerCase() === cleanEmail);
+    if (!found) {
+      return { success: false, error: 'No rider account found with that email address.' };
+    }
+
+    const storedPhoneDigits = (found.phoneNumber || '').replace(/\D/g, '');
+    const phoneMatches = storedPhoneDigits && (
+      storedPhoneDigits === cleanPhone ||
+      storedPhoneDigits.slice(-8) === cleanPhone.slice(-8) ||
+      (cleanPhone.length === 4 && storedPhoneDigits.slice(-4) === cleanPhone)
+    );
+
+    if (!phoneMatches) {
+      return {
+        success: false,
+        error: 'The phone number entered does not match the phone number on this account.'
+      };
+    }
+
+    const hashed = await hashPassword(newPassword);
+    const updatedRider: Rider = { ...found, passwordHash: hashed };
+    setRiders(prev => prev.map(r => r.id === found.id ? updatedRider : r));
+    await saveUserPasswordHash('rider', found.id, hashed);
+    logAdminAction('RIDER_PASSWORD_RESET', `Password reset completed via phone verification for rider ${found.email}`);
+    return { success: true };
+  };
+
   // 3. Driver Auth (Driver ID Code + Password/PIN Protected)
   const driverLogin = async (driverIdCode: string, password?: string): Promise<{ success: boolean; error?: string }> => {
     const cleanCode = driverIdCode.trim().toUpperCase();
@@ -1000,6 +1051,59 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
     }
     setCurrentDriver(null);
+  };
+
+  const driverResetPassword = async (
+    driverIdCode: string,
+    emailOrPhone: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanCode = driverIdCode.trim().toUpperCase();
+    const cleanVerify = emailOrPhone.trim().toLowerCase();
+    if (!cleanCode) return { success: false, error: 'Please enter your Driver ID Code (e.g. DRV001).' };
+    if (!cleanVerify) return { success: false, error: 'Please enter your registered email address or phone number.' };
+    if (!newPassword || newPassword.trim().length < 4) {
+      return { success: false, error: 'Your new PIN / Password must be at least 4 characters long.' };
+    }
+
+    let currentDriversList = drivers;
+    try {
+      const sbDrivers = await fetchAllDrivers();
+      if (sbDrivers.length > 0) {
+        currentDriversList = sbDrivers;
+        setDrivers(sbDrivers);
+      }
+    } catch { /* fallback to local state */ }
+
+    const found = currentDriversList.find(d => d.driverIdCode.toUpperCase() === cleanCode);
+    if (!found) {
+      return { success: false, error: 'Driver ID Code not found. Please check your code or contact USRide Admin.' };
+    }
+
+    const storedEmail = (found.email || '').trim().toLowerCase();
+    const storedPhoneDigits = (found.phoneNumber || '').replace(/\D/g, '');
+    const inputDigits = cleanVerify.replace(/\D/g, '');
+
+    const matchesEmail = storedEmail && storedEmail === cleanVerify;
+    const matchesPhone = storedPhoneDigits && inputDigits.length >= 4 && (
+      storedPhoneDigits === inputDigits ||
+      storedPhoneDigits.slice(-8) === inputDigits.slice(-8) ||
+      (inputDigits.length === 4 && storedPhoneDigits.slice(-4) === inputDigits)
+    );
+
+    if (!matchesEmail && !matchesPhone) {
+      return {
+        success: false,
+        error: 'The email or phone number entered does not match the registered details for this Driver ID.'
+      };
+    }
+
+    const hashed = await hashPassword(newPassword);
+    const updatedDriver: Driver = { ...found, passwordHash: hashed };
+    setDrivers(prev => prev.map(d => d.id === found.id ? updatedDriver : d));
+    await saveUserPasswordHash('driver', found.id, hashed);
+    logAdminAction('DRIVER_PASSWORD_RESET', `Driver PIN/Password reset completed for ${found.driverIdCode} (${found.name})`);
+    return { success: true };
   };
 
   // Online status toggle
@@ -2175,8 +2279,10 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setActiveView,
       riderLogin,
       riderRegister,
+      riderResetPassword,
       riderLogout,
       driverLogin,
+      driverResetPassword,
       driverLogout,
       toggleDriverOnline,
       updateKekeEnergy,

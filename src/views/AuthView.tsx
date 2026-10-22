@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useUSRide } from '../context/USRideContext';
-import { ArrowLeft, Eye, EyeOff, Loader, Lock } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Loader, Lock, KeyRound, CheckCircle } from 'lucide-react';
 
-type AuthMode = 'select' | 'rider-login' | 'rider-register' | 'driver-login';
+type AuthMode = 'select' | 'rider-login' | 'rider-register' | 'rider-forgot' | 'driver-login' | 'driver-forgot';
 
 interface AuthViewProps {
   defaultRole?: 'rider' | 'driver';
@@ -10,13 +10,14 @@ interface AuthViewProps {
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
-  const { riderLogin, riderRegister, driverLogin } = useUSRide();
+  const { riderLogin, riderRegister, riderResetPassword, driverLogin, driverResetPassword } = useUSRide();
 
   const [mode, setMode] = useState<AuthMode>(
     defaultRole === 'driver' ? 'driver-login' : defaultRole === 'rider' ? 'rider-login' : 'select'
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [showPass, setShowPass] = useState(false);
 
   // Rider login
@@ -31,9 +32,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
   const [rRegPassword, setRRegPassword] = useState('');
   const [rRegConfirmPassword, setRRegConfirmPassword] = useState('');
 
+  // Rider forgot password
+  const [rResetEmail, setRResetEmail] = useState('');
+  const [rResetPhone, setRResetPhone] = useState('');
+  const [rResetNewPassword, setRResetNewPassword] = useState('');
+  const [rResetConfirmPassword, setRResetConfirmPassword] = useState('');
+
   // Driver login
   const [dCode, setDCode] = useState('');
   const [dPassword, setDPassword] = useState('');
+
+  // Driver forgot password
+  const [dResetCode, setDResetCode] = useState('');
+  const [dResetVerify, setDResetVerify] = useState('');
+  const [dResetNewPassword, setDResetNewPassword] = useState('');
+  const [dResetConfirmPassword, setDResetConfirmPassword] = useState('');
 
   const handleRiderLogin = async () => {
     if (!rEmail.trim()) { setError('Please enter your email address.'); return; }
@@ -75,11 +88,67 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
       setError('Please enter your Driver PIN / Password (minimum 4 characters).');
       return;
     }
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setSuccessMsg('');
     const res = await driverLogin(dCode.trim().toUpperCase(), dPassword);
     setLoading(false);
     if (!res.success) {
       setError(res.error || 'Invalid Driver ID Code or PIN. Contact the Admin if you need help.');
+    }
+  };
+
+  const handleRiderForgotPassword = async () => {
+    if (!rResetEmail.trim() || !rResetPhone.trim() || !rResetNewPassword.trim()) {
+      setError('Please enter your registered email, phone number, and your new password.');
+      return;
+    }
+    if (rResetNewPassword.trim().length < 4) {
+      setError('Your new password must be at least 4 characters long.');
+      return;
+    }
+    if (rResetNewPassword !== rResetConfirmPassword) {
+      setError('New passwords do not match. Please check and try again.');
+      return;
+    }
+    setLoading(true); setError(''); setSuccessMsg('');
+    const res = await riderResetPassword(rResetEmail.trim(), rResetPhone.trim(), rResetNewPassword);
+    setLoading(false);
+    if (!res.success) {
+      setError(res.error || 'Could not reset password. Please check your registered email and phone number.');
+    } else {
+      setREmail(rResetEmail.trim());
+      setRLoginPassword('');
+      setRResetNewPassword('');
+      setRResetConfirmPassword('');
+      setSuccessMsg('✅ Password reset successful! You can now sign in with your new password.');
+      setMode('rider-login');
+    }
+  };
+
+  const handleDriverForgotPassword = async () => {
+    if (!dResetCode.trim() || !dResetVerify.trim() || !dResetNewPassword.trim()) {
+      setError('Please enter your Driver ID Code, registered email or phone number, and your new PIN/Password.');
+      return;
+    }
+    if (dResetNewPassword.trim().length < 4) {
+      setError('Your new PIN / Password must be at least 4 characters long.');
+      return;
+    }
+    if (dResetNewPassword !== dResetConfirmPassword) {
+      setError('New PIN / Passwords do not match. Please check and try again.');
+      return;
+    }
+    setLoading(true); setError(''); setSuccessMsg('');
+    const res = await driverResetPassword(dResetCode.trim().toUpperCase(), dResetVerify.trim(), dResetNewPassword);
+    setLoading(false);
+    if (!res.success) {
+      setError(res.error || 'Could not reset PIN/Password. Please verify your details or contact USRide Admin.');
+    } else {
+      setDCode(dResetCode.trim().toUpperCase());
+      setDPassword('');
+      setDResetNewPassword('');
+      setDResetConfirmPassword('');
+      setSuccessMsg('✅ Driver PIN / Password reset successful! You can now sign in.');
+      setMode('driver-login');
     }
   };
 
@@ -181,7 +250,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
               </div>
 
               <div>
-                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Password</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151' }}>Password</label>
+                  <span
+                    onClick={() => {
+                      setRResetEmail(rEmail);
+                      setError('');
+                      setSuccessMsg('');
+                      setMode('rider-forgot');
+                    }}
+                    style={{ fontSize: '12px', fontWeight: '700', color: '#5B21B6', cursor: 'pointer' }}
+                  >
+                    Forgot Password?
+                  </span>
+                </div>
                 <div style={{ position: 'relative' }}>
                   <input
                     style={{ ...inputStyle, paddingRight: '44px' }}
@@ -209,6 +291,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
               </div>
             </div>
 
+            {successMsg && (
+              <p style={{ color: '#047857', fontSize: '13px', marginBottom: '16px', padding: '10px 14px', backgroundColor: '#ECFDF5', borderRadius: '10px', border: '1px solid #A7F3D0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle size={16} /> {successMsg}
+              </p>
+            )}
             {error && <p style={{ color: '#DC2626', fontSize: '13px', marginBottom: '16px', padding: '10px 14px', backgroundColor: '#FEF2F2', borderRadius: '10px' }}>{error}</p>}
 
             <button style={btnPrimary} onClick={handleRiderLogin} disabled={loading}>
@@ -312,6 +399,87 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
           </>
         )}
 
+        {/* ── RIDER FORGOT PASSWORD ── */}
+        {mode === 'rider-forgot' && (
+          <>
+            <h2 style={{ fontSize: '26px', fontWeight: '900', color: '#1e1040', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <KeyRound size={24} color="#5B21B6" /> Reset Password
+            </h2>
+            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '24px' }}>
+              Verify your registered email and phone number to set a new password.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Registered Email Address</label>
+                <input
+                  style={inputStyle}
+                  type="email"
+                  placeholder="yourname@uniben.edu"
+                  value={rResetEmail}
+                  onChange={e => setRResetEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Registered Phone Number</label>
+                <input
+                  style={inputStyle}
+                  type="tel"
+                  placeholder="e.g. 08031234567"
+                  value={rResetPhone}
+                  onChange={e => setRResetPhone(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>New Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...inputStyle, paddingRight: '44px' }}
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="At least 4 characters"
+                    value={rResetNewPassword}
+                    onChange={e => setRResetNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    style={{
+                      position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex'
+                    }}
+                  >
+                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Confirm New Password</label>
+                <input
+                  style={inputStyle}
+                  type={showPass ? 'text' : 'password'}
+                  placeholder="Re-enter your new password"
+                  value={rResetConfirmPassword}
+                  onChange={e => setRResetConfirmPassword(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleRiderForgotPassword()}
+                />
+              </div>
+            </div>
+
+            {error && <p style={{ color: '#DC2626', fontSize: '13px', marginBottom: '16px', padding: '10px 14px', backgroundColor: '#FEF2F2', borderRadius: '10px' }}>{error}</p>}
+
+            <button style={btnPrimary} onClick={handleRiderForgotPassword} disabled={loading}>
+              {loading ? <Loader size={18} className="spin" /> : null}
+              {loading ? 'Updating Password...' : 'Reset Password →'}
+            </button>
+
+            <p style={{ textAlign: 'center', fontSize: '13px', color: '#6B7280', marginTop: '20px' }}>
+              Remembered your password?{' '}
+              <span onClick={() => { setMode('rider-login'); setError(''); }}
+                style={{ color: '#5B21B6', fontWeight: '700', cursor: 'pointer' }}>Back to Sign In</span>
+            </p>
+          </>
+        )}
+
         {/* ── DRIVER LOGIN ── */}
         {mode === 'driver-login' && (
           <>
@@ -332,7 +500,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
               </div>
 
               <div>
-                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Driver PIN / Password</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151' }}>Driver PIN / Password</label>
+                  <span
+                    onClick={() => {
+                      setDResetCode(dCode);
+                      setError('');
+                      setSuccessMsg('');
+                      setMode('driver-forgot');
+                    }}
+                    style={{ fontSize: '12px', fontWeight: '700', color: '#5B21B6', cursor: 'pointer' }}
+                  >
+                    Forgot PIN / Password?
+                  </span>
+                </div>
                 <div style={{ position: 'relative' }}>
                   <input
                     style={{ ...inputStyle, paddingRight: '44px' }}
@@ -359,6 +540,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
               </div>
             </div>
 
+            {successMsg && (
+              <p style={{ color: '#047857', fontSize: '13px', marginBottom: '16px', padding: '10px 14px', backgroundColor: '#ECFDF5', borderRadius: '10px', border: '1px solid #A7F3D0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle size={16} /> {successMsg}
+              </p>
+            )}
             {error && <p style={{ color: '#DC2626', fontSize: '13px', marginBottom: '16px', padding: '10px 14px', backgroundColor: '#FEF2F2', borderRadius: '10px' }}>{error}</p>}
 
             <button style={btnPrimary} onClick={handleDriverLogin} disabled={loading}>
@@ -375,6 +561,88 @@ export const AuthView: React.FC<AuthViewProps> = ({ defaultRole, onBack }) => {
                 Contact the USRide Admin to get registered as a driver on the platform.
               </p>
             </div>
+          </>
+        )}
+
+        {/* ── DRIVER FORGOT PIN / PASSWORD ── */}
+        {mode === 'driver-forgot' && (
+          <>
+            <h2 style={{ fontSize: '26px', fontWeight: '900', color: '#1e1040', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <KeyRound size={24} color="#5B21B6" /> Reset Driver PIN
+            </h2>
+            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '24px' }}>
+              Enter your Driver ID Code and registered email or phone number to set a new PIN/Password.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Driver ID Code</label>
+                <input
+                  style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '700', fontSize: '18px', textAlign: 'center' }}
+                  type="text"
+                  placeholder="DRV001"
+                  value={dResetCode}
+                  onChange={e => setDResetCode(e.target.value.toUpperCase())}
+                  maxLength={8}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Registered Email or Phone Number</label>
+                <input
+                  style={inputStyle}
+                  type="text"
+                  placeholder="driver@usride.uniben.edu or 0803..."
+                  value={dResetVerify}
+                  onChange={e => setDResetVerify(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>New PIN / Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...inputStyle, paddingRight: '44px' }}
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="At least 4 characters"
+                    value={dResetNewPassword}
+                    onChange={e => setDResetNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    style={{
+                      position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex'
+                    }}
+                  >
+                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '6px' }}>Confirm New PIN / Password</label>
+                <input
+                  style={inputStyle}
+                  type={showPass ? 'text' : 'password'}
+                  placeholder="Re-enter your new PIN or password"
+                  value={dResetConfirmPassword}
+                  onChange={e => setDResetConfirmPassword(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleDriverForgotPassword()}
+                />
+              </div>
+            </div>
+
+            {error && <p style={{ color: '#DC2626', fontSize: '13px', marginBottom: '16px', padding: '10px 14px', backgroundColor: '#FEF2F2', borderRadius: '10px' }}>{error}</p>}
+
+            <button style={btnPrimary} onClick={handleDriverForgotPassword} disabled={loading}>
+              {loading ? <Loader size={18} className="spin" /> : null}
+              {loading ? 'Updating PIN...' : 'Reset Driver PIN →'}
+            </button>
+
+            <p style={{ textAlign: 'center', fontSize: '13px', color: '#6B7280', marginTop: '20px' }}>
+              Remembered your PIN?{' '}
+              <span onClick={() => { setMode('driver-login'); setError(''); }}
+                style={{ color: '#5B21B6', fontWeight: '700', cursor: 'pointer' }}>Back to Driver Sign In</span>
+            </p>
           </>
         )}
 

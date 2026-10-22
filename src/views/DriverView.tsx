@@ -40,6 +40,7 @@ export const DriverView: React.FC = () => {
     currentDriver,
     currentKeke,
     driverLogin,
+    driverResetPassword,
     driverLogout,
     toggleDriverOnline,
     updateKekeEnergy,
@@ -75,6 +76,10 @@ export const DriverView: React.FC = () => {
   // Login states
   const [driverIdInput, setDriverIdInput] = useState('');
   const [driverPasswordInput, setDriverPasswordInput] = useState('');
+  const [driverAuthMode, setDriverAuthMode] = useState<'login' | 'forgot'>('login');
+  const [driverResetVerifyInput, setDriverResetVerifyInput] = useState('');
+  const [driverResetNewPassword, setDriverResetNewPassword] = useState('');
+  const [driverResetConfirmPassword, setDriverResetConfirmPassword] = useState('');
   
   // Dashboard navigation states
   const [driverStep, setDriverStep] = useState<'idle' | 'energy-input' | 'earnings' | 'active' | 'profile'>('idle');
@@ -316,33 +321,121 @@ export const DriverView: React.FC = () => {
             <p style={{ fontSize: '12px', color: '#a7f3d0', marginTop: '4px' }}>UNIBEN Smart Campus Driver Portal</p>
           </div>
 
-          <form onSubmit={handleDriverLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>Driver ID Code</label>
-              <input 
-                type="text" 
-                className="landmark-select-item" 
-                style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px', textTransform: 'uppercase' }} 
-                placeholder="DRV001"
-                value={driverIdInput}
-                onChange={(e) => setDriverIdInput(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>Driver PIN / Password</label>
-              <input 
-                type="password" 
-                className="landmark-select-item" 
-                style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px' }} 
-                placeholder="Enter your driver password"
-                value={driverPasswordInput}
-                onChange={(e) => setDriverPasswordInput(e.target.value)}
-                required
-              />
-            </div>
-            <button className="gold-btn" type="submit">Access Portal</button>
-          </form>
+          {driverAuthMode === 'login' ? (
+            <form onSubmit={handleDriverLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>Driver ID Code</label>
+                <input 
+                  type="text" 
+                  className="landmark-select-item" 
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px', textTransform: 'uppercase' }} 
+                  placeholder="DRV001"
+                  value={driverIdInput}
+                  onChange={(e) => setDriverIdInput(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>Driver PIN / Password</label>
+                  <span
+                    style={{ fontSize: '11px', color: 'var(--uniben-gold)', cursor: 'pointer', fontWeight: 'bold' }}
+                    onClick={() => setDriverAuthMode('forgot')}
+                  >
+                    Forgot PIN / Password?
+                  </span>
+                </div>
+                <input 
+                  type="password" 
+                  className="landmark-select-item" 
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px' }} 
+                  placeholder="Enter your driver password"
+                  value={driverPasswordInput}
+                  onChange={(e) => setDriverPasswordInput(e.target.value)}
+                  required
+                />
+              </div>
+              <button className="gold-btn" type="submit">Access Portal</button>
+            </form>
+          ) : (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!driverIdInput || !driverResetVerifyInput || !driverResetNewPassword) return;
+                if (driverResetNewPassword.length < 4) {
+                  showModal({ title: 'Weak PIN', message: 'Your new PIN / Password must be at least 4 characters long.', type: 'warning' });
+                  return;
+                }
+                if (driverResetNewPassword !== driverResetConfirmPassword) {
+                  showModal({ title: 'PIN Mismatch', message: 'New PIN / Passwords do not match.', type: 'error' });
+                  return;
+                }
+                const res = await driverResetPassword(driverIdInput, driverResetVerifyInput, driverResetNewPassword);
+                if (!res.success) {
+                  showModal({ title: 'Reset Failed', message: res.error || 'Could not verify your Driver ID and email/phone.', type: 'error' });
+                } else {
+                  setDriverResetNewPassword('');
+                  setDriverResetConfirmPassword('');
+                  setDriverAuthMode('login');
+                  showModal({ title: 'PIN Reset Successful ✅', message: 'Your Driver PIN / Password has been updated. Please sign in.', type: 'success' });
+                }
+              }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+            >
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>Driver ID Code</label>
+                <input
+                  type="text"
+                  className="landmark-select-item"
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px', textTransform: 'uppercase' }}
+                  placeholder="DRV001"
+                  value={driverIdInput}
+                  onChange={(e) => setDriverIdInput(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>Registered Email or Phone</label>
+                <input
+                  type="text"
+                  className="landmark-select-item"
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px' }}
+                  placeholder="driver@usride.uniben.edu or 0803..."
+                  value={driverResetVerifyInput}
+                  onChange={(e) => setDriverResetVerifyInput(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>New PIN / Password</label>
+                <input
+                  type="password"
+                  className="landmark-select-item"
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px' }}
+                  placeholder="Minimum 4 characters"
+                  value={driverResetNewPassword}
+                  onChange={(e) => setDriverResetNewPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 'bold' }}>Confirm New PIN / Password</label>
+                <input
+                  type="password"
+                  className="landmark-select-item"
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #059669', marginTop: '4px' }}
+                  placeholder="Re-enter new PIN"
+                  value={driverResetConfirmPassword}
+                  onChange={(e) => setDriverResetConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <button className="gold-btn" type="submit">Reset PIN / Password</button>
+              <div style={{ textAlign: 'center', fontSize: '12px', marginTop: '6px' }}>
+                <span style={{ color: '#a7f3d0', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => setDriverAuthMode('login')}>← Back to Driver Sign In</span>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     );

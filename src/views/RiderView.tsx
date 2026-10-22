@@ -20,6 +20,7 @@ export const RiderView: React.FC = () => {
     currentRider,
     riderLogin,
     riderRegister,
+    riderResetPassword,
     riderLogout,
     bookRide,
     cancelRide,
@@ -49,7 +50,11 @@ export const RiderView: React.FC = () => {
   const [registerPhone, setRegisterPhone] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [resetEmailInput, setResetEmailInput] = useState('');
+  const [resetPhoneInput, setResetPhoneInput] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
   
   // Booking states
   const [bookingStep, setBookingStep] = useState<'idle' | 'locations' | 'ride-type' | 'searching' | 'active' | 'rating' | 'wallet' | 'history' | 'profile'>('idle');
@@ -484,7 +489,18 @@ export const RiderView: React.FC = () => {
                 />
               </div>
               <div>
-                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>Password</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>Password</label>
+                  <span
+                    style={{ fontSize: '11px', color: 'var(--uniben-gold)', cursor: 'pointer', fontWeight: 'bold' }}
+                    onClick={() => {
+                      setResetEmailInput(emailInput);
+                      setAuthMode('forgot');
+                    }}
+                  >
+                    Forgot Password?
+                  </span>
+                </div>
                 <input 
                   type="password" 
                   className="landmark-select-item" 
@@ -499,6 +515,85 @@ export const RiderView: React.FC = () => {
               
               <div style={{ textAlign: 'center', fontSize: '12px', marginTop: '10px' }}>
                 Don't have an account? <span style={{ color: 'var(--uniben-gold)', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => setAuthMode('register')}>Register</span>
+              </div>
+            </form>
+          ) : authMode === 'forgot' ? (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!resetEmailInput || !resetPhoneInput || !resetNewPassword) return;
+                if (resetNewPassword.length < 4) {
+                  showModal({ title: 'Weak Password', message: 'Your new password must be at least 4 characters long.', type: 'warning' });
+                  return;
+                }
+                if (resetNewPassword !== resetConfirmPassword) {
+                  showModal({ title: 'Password Mismatch', message: 'New passwords do not match. Please try again.', type: 'error' });
+                  return;
+                }
+                const res = await riderResetPassword(resetEmailInput, resetPhoneInput, resetNewPassword);
+                if (!res.success) {
+                  showModal({ title: 'Reset Failed', message: res.error || 'Could not verify your email and phone number.', type: 'error' });
+                } else {
+                  setEmailInput(resetEmailInput);
+                  setResetNewPassword('');
+                  setResetConfirmPassword('');
+                  setAuthMode('login');
+                  showModal({ title: 'Password Reset Successful ✅', message: 'Your password has been updated. Please sign in with your new password.', type: 'success' });
+                }
+              }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+            >
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>Registered Email</label>
+                <input
+                  type="email"
+                  className="landmark-select-item"
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #475569', marginTop: '4px' }}
+                  placeholder="name@uniben.edu"
+                  value={resetEmailInput}
+                  onChange={(e) => setResetEmailInput(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>Registered Phone Number</label>
+                <input
+                  type="tel"
+                  className="landmark-select-item"
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #475569', marginTop: '4px' }}
+                  placeholder="e.g. 08031234567"
+                  value={resetPhoneInput}
+                  onChange={(e) => setResetPhoneInput(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>New Password</label>
+                <input
+                  type="password"
+                  className="landmark-select-item"
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #475569', marginTop: '4px' }}
+                  placeholder="Minimum 4 characters"
+                  value={resetNewPassword}
+                  onChange={(e) => setResetNewPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 'bold' }}>Confirm New Password</label>
+                <input
+                  type="password"
+                  className="landmark-select-item"
+                  style={{ width: '100%', outline: 'none', color: '#1e293b', border: '1px solid #475569', marginTop: '4px' }}
+                  placeholder="Re-enter new password"
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <button className="primary-btn" type="submit">Reset Password</button>
+              <div style={{ textAlign: 'center', fontSize: '12px', marginTop: '10px' }}>
+                Remembered your password? <span style={{ color: 'var(--uniben-gold)', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => setAuthMode('login')}>Back to Sign In</span>
               </div>
             </form>
           ) : (
