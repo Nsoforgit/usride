@@ -139,6 +139,7 @@ export const DriverView: React.FC = () => {
   // Cab Financials states
   const [cabPetrolInput, setCabPetrolInput] = useState(currentDriver?.petrolCostToday || 0);
   const [cabCashInput, setCabCashInput] = useState(currentDriver?.cashCollectedToday || 0);
+  const [showVehicleQrModal, setShowVehicleQrModal] = useState(false);
 
   // Incoming booking offer alert state
   const [incomingTrip, setIncomingTrip] = useState<Trip | null>(null);
@@ -491,6 +492,13 @@ export const DriverView: React.FC = () => {
               style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.6)' }}
             />
           </button>
+          <button
+            onClick={() => setShowVehicleQrModal(true)}
+            style={{ background: 'none', border: 'none', color: 'var(--uniben-gold)', cursor: 'pointer' }}
+            title="Show Printable Vehicle QR Code for Instant Booking"
+          >
+            <QrCode size={18} />
+          </button>
           <button onClick={() => setDriverStep('earnings')} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }} title="Earnings credited, paid out by the school">
             <Wallet size={18} />
           </button>
@@ -806,48 +814,79 @@ export const DriverView: React.FC = () => {
                 </button>
               </div>
             ) : (
-              // Cab Driver: Petrol and Cash Inputs
-              <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>UCRide Daily Financials</span>
-                  <div style={{ fontSize: '28px', fontWeight: '800', color: '#2563eb', marginTop: '4px' }}>
-                    ₦{((trips.filter(t => t.driverId === currentDriver.id && t.status === 'completed').reduce((sum, t) => sum + t.totalFare, 0) || 0) + (cabCashInput || 0) - (cabPetrolInput || 0)).toLocaleString()} Profit
+              // 3.6 Cab Driver: Digital Wallet Fares + Service Fee Flow alongside Petrol & Cash Tracker
+              (() => {
+                const cabCompletedTrips = trips.filter(t => t.driverId === currentDriver.id && t.status === 'completed');
+                const cabDigitalFares = cabCompletedTrips.reduce((sum, t) => sum + t.totalFare, 0);
+                const cabServiceFees = cabCompletedTrips.reduce(
+                  (sum, t) => sum + (t.transferFee ?? (t.rideType === 'drop' ? 50 : 10 * (t.seatsBooked || 1))),
+                  0
+                );
+                const netCabTakeHome = cabDigitalFares + (cabCashInput || 0) - (cabPetrolInput || 0);
+                return (
+                  <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <span style={{ fontSize: '11px', color: '#1d4ed8', backgroundColor: '#eff6ff', padding: '3px 10px', borderRadius: '12px', fontWeight: '700', border: '1px solid #bfdbfe' }}>
+                        USRide Cab · Digital Wallet + Fuel/Cash Tracker
+                      </span>
+                      <div style={{ fontSize: '28px', fontWeight: '800', color: '#2563eb', marginTop: '8px' }}>
+                        ₦{netCabTakeHome.toLocaleString()} Net Profit
+                      </div>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        Digital Wallet Fares + Cash Fares minus Petrol Cost
+                      </span>
+                    </div>
+
+                    {/* Digital Wallet Fares Breakdown Card */}
+                    <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '10px 12px', fontSize: '11px', color: '#166534', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800' }}>
+                        <span>💳 In-App Digital Wallet Fares ({cabCompletedTrips.length} trips):</span>
+                        <span>₦{cabDigitalFares.toLocaleString()}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#15803d' }}>
+                        <span>Earnings credited, paid out by the school:</span>
+                        <strong>₦{currentDriver.walletBalance.toLocaleString()}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#64748b' }}>
+                        <span>Platform Service Fee Collected (₦10/seat · ₦50/drop):</span>
+                        <span>₦{cabServiceFees.toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Daily Petrol Purchased (₦)</label>
+                      <input 
+                        type="number" 
+                        className="landmark-select-item" 
+                        style={{ width: '100%', color: '#1e293b', border: '1px solid #cbd5e1', marginTop: '6px', padding: '10px' }} 
+                        placeholder="e.g. 3500"
+                        value={cabPetrolInput}
+                        onChange={(e) => setCabPetrolInput(Math.max(0, parseFloat(e.target.value) || 0))}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Daily Offline Cash Collected (₦)</label>
+                      <input 
+                        type="number" 
+                        className="landmark-select-item" 
+                        style={{ width: '100%', color: '#1e293b', border: '1px solid #cbd5e1', marginTop: '6px', padding: '10px' }} 
+                        placeholder="e.g. 5000"
+                        value={cabCashInput}
+                        onChange={(e) => setCabCashInput(Math.max(0, parseFloat(e.target.value) || 0))}
+                      />
+                    </div>
+
+                    <div style={{ backgroundColor: '#eff6ff', padding: '10px', borderRadius: '8px', fontSize: '11px', color: '#1e40af', border: '1px solid #bfdbfe' }}>
+                      💡 Riders can pay your Cab digitally in-app (₦250/seat + ₦10 fee, or ₦1,000 drop + ₦50 fee) or via your Vehicle QR Code. Offline cash and petrol are tracked alongside your digital wallet balance.
+                    </div>
+
+                    <button className="primary-btn" style={{ backgroundColor: '#2563eb' }} onClick={handleSaveCabFinancials}>
+                      Save Financials Tracker
+                    </button>
                   </div>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Real-time profit tracking dashboard</span>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Daily Petrol Purchased (₦)</label>
-                  <input 
-                    type="number" 
-                    className="landmark-select-item" 
-                    style={{ width: '100%', color: '#1e293b', border: '1px solid #cbd5e1', marginTop: '6px', padding: '10px' }} 
-                    placeholder="e.g. 3500"
-                    value={cabPetrolInput}
-                    onChange={(e) => setCabPetrolInput(Math.max(0, parseFloat(e.target.value) || 0))}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Daily Cash Collected (₦)</label>
-                  <input 
-                    type="number" 
-                    className="landmark-select-item" 
-                    style={{ width: '100%', color: '#1e293b', border: '1px solid #cbd5e1', marginTop: '6px', padding: '10px' }} 
-                    placeholder="e.g. 5000"
-                    value={cabCashInput}
-                    onChange={(e) => setCabCashInput(Math.max(0, parseFloat(e.target.value) || 0))}
-                  />
-                </div>
-
-                <div style={{ backgroundColor: '#eff6ff', padding: '10px', borderRadius: '8px', fontSize: '11px', color: '#1e40af', border: '1px solid #bfdbfe' }}>
-                  💡 This tracks offline cash collections and fuel expenses to help monitor your daily net take-home earnings.
-                </div>
-
-                <button className="primary-btn" style={{ backgroundColor: '#2563eb' }} onClick={handleSaveCabFinancials}>
-                  Save Financials Tracker
-                </button>
-              </div>
+                );
+              })()
             )}
           </div>
         )}
@@ -1110,6 +1149,111 @@ export const DriverView: React.FC = () => {
                 </div>
               </div>
 
+              {/* 3.5 Printable / Viewable Vehicle QR Code Modal */}
+              {showVehicleQrModal && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: 'rgba(15, 23, 42, 0.88)',
+                  backdropFilter: 'blur(6px)',
+                  zIndex: 999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px'
+                }}>
+                  <div style={{
+                    backgroundColor: '#ffffff',
+                    borderRadius: '18px',
+                    padding: '20px',
+                    width: '100%',
+                    maxWidth: '330px',
+                    color: '#0f172a',
+                    boxShadow: '0 12px 35px rgba(0,0,0,0.45)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                    textAlign: 'center',
+                    border: '3px solid var(--uniben-green)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--uniben-green)', textTransform: 'uppercase' }}>
+                        USRide Instant Booking QR
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowVehicleQrModal(false)}
+                        style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div style={{
+                      padding: '12px',
+                      borderRadius: '12px',
+                      border: '2px solid #059669',
+                      backgroundColor: '#f8fafc'
+                    }}>
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.origin}/?vehicle=${currentKeke.plateNumber}`)}`}
+                        alt={`QR Code for ${currentKeke.plateNumber}`}
+                        style={{ width: '160px', height: '160px', display: 'block' }}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '18px', fontWeight: '900', color: '#064e3b' }}>
+                        {currentKeke.plateNumber}
+                      </div>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginTop: '2px' }}>
+                        {currentDriver.name} • Code: <span style={{ color: '#059669' }}>{currentDriver.driverIdCode}</span>
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
+                        Riders scan this QR or enter <strong>{currentKeke.plateNumber}</strong> in the USRide app to book &amp; pay this {currentDriver.vehicleType === 'keke' ? 'Solar Keke' : 'Campus Cab'} directly.
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          backgroundColor: 'var(--uniben-green)',
+                          color: 'white',
+                          fontWeight: '800',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🖨️ Print QR Sticker
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowVehicleQrModal(false)}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          backgroundColor: '#f1f5f9',
+                          color: '#334155',
+                          fontWeight: '700',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Driver Control overlay panels */}
               <div className="map-overlay-bottom" style={{ display: hideOverlay ? 'none' : 'block' }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
@@ -1197,6 +1341,29 @@ export const DriverView: React.FC = () => {
                         Earnings credited, paid out by the school: <strong>₦{currentDriver.walletBalance.toLocaleString()}</strong>
                       </span>
                     </div>
+
+                    {/* 3.5 Vehicle QR Code Button for Instant Booking */}
+                    <button
+                      type="button"
+                      onClick={() => setShowVehicleQrModal(true)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: '1.5px dashed #059669',
+                        backgroundColor: '#f0fdf4',
+                        color: '#065f46',
+                        fontWeight: '800',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <QrCode size={14} /> Show Printable Vehicle QR Code ({currentKeke.plateNumber})
+                    </button>
 
                     {/* Live GPS Location Pill */}
                     {userLocation.nearestLandmark && (

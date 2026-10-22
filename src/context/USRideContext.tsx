@@ -456,7 +456,7 @@ interface USRideContextType {
 
   
   // Booking Functions
-  bookRide: (rideType: 'shared' | 'drop', vehicleType: 'keke' | 'cab', pickupId: string, destId: string, seatsBooked?: number) => Promise<Trip | null>;
+  bookRide: (rideType: 'shared' | 'drop', vehicleType: 'keke' | 'cab', pickupId: string, destId: string, seatsBooked?: number, preselectedKekeId?: number | null) => Promise<Trip | null>;
   cancelRide: (tripId: string) => void;
   riderTopUpWallet: (amount: number, reference?: string) => boolean;
   addRiderCard: (card: Omit<SavedCard, 'id'>) => void;
@@ -1351,7 +1351,7 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 4. Rider Booking Flow
-  const bookRide = async (rideType: 'shared' | 'drop', vehicleType: 'keke' | 'cab', pickupId: string, destId: string, seatsBooked = 1) => {
+  const bookRide = async (rideType: 'shared' | 'drop', vehicleType: 'keke' | 'cab', pickupId: string, destId: string, seatsBooked = 1, preselectedKekeId?: number | null) => {
     if (!currentRider) return null;
     
     // Hackathon Fare & Settlement Rules:
@@ -1463,6 +1463,16 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (eligibleDriverIds.length > 0) {
         initialRadius = 99999;
         console.log(`[Proximity Fallback] Global broadcast to all ${eligibleDriverIds.length} online driver(s) regardless of distance`);
+      }
+    }
+
+    // 3.5 Vehicle QR Code Instant Pre-selection: prioritize the scanned/selected vehicle's driver
+    if (preselectedKekeId) {
+      const targetVehicle = kekes.find(k => k.id === preselectedKekeId);
+      const targetDriverId = targetVehicle?.driverId || drivers.find(d => d.kekeId === preselectedKekeId)?.id || null;
+      if (targetDriverId) {
+        eligibleDriverIds = [targetDriverId, ...eligibleDriverIds.filter(id => id !== targetDriverId)];
+        logAdminAction('QR_VEHICLE_BOOKING', `Rider ${currentRider.name} booked via QR code for Vehicle #${preselectedKekeId} (${targetVehicle?.plateNumber || 'N/A'})`);
       }
     }
 

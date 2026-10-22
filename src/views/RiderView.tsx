@@ -61,6 +61,11 @@ export const RiderView: React.FC = () => {
   const [showSosSheet, setShowSosSheet] = useState(false);
   const [sosCategory, setSosCategory] = useState('Medical Emergency');
   const [sosDescription, setSosDescription] = useState('');
+
+  // 3.5 Vehicle QR Code Instant Booking states
+  const [preselectedKekeId, setPreselectedKekeId] = useState<number | null>(null);
+  const [showQrScannerModal, setShowQrScannerModal] = useState(false);
+  const [qrVehicleInput, setQrVehicleInput] = useState('');
   
   // Booking states
   const [bookingStep, setBookingStep] = useState<'idle' | 'locations' | 'ride-type' | 'searching' | 'active' | 'rating' | 'wallet' | 'history' | 'profile'>('idle');
@@ -316,11 +321,61 @@ export const RiderView: React.FC = () => {
 
   const handleConfirmBooking = async () => {
     synthSound.playBubble();
-    const trip = await bookRide(rideType, vehicleType, pickupId, destId, seatsCount);
+    const trip = await bookRide(rideType, vehicleType, pickupId, destId, seatsCount, preselectedKekeId);
     if (trip) {
       setActiveTrip(trip);
+      setPreselectedKekeId(null);
       setBookingStep('searching');
     }
+  };
+
+  // 3.5 Auto-detect ?vehicle= or ?qr= URL parameter from a scanned Vehicle QR code
+  useEffect(() => {
+    if (!currentRider || kekes.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const qrParam = (params.get('vehicle') || params.get('qr') || '').trim().toUpperCase();
+    if (!qrParam) return;
+
+    const matchedVehicle = kekes.find(
+      k =>
+        String(k.id) === qrParam.replace('#', '') ||
+        k.plateNumber.toUpperCase() === qrParam ||
+        drivers.some(d => d.kekeId === k.id && d.driverIdCode.toUpperCase() === qrParam)
+    );
+    if (matchedVehicle) {
+      setPreselectedKekeId(matchedVehicle.id);
+      setVehicleType(matchedVehicle.vehicleType);
+      setBookingStep('locations');
+      // Clean URL parameter so it doesn't re-trigger
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [currentRider, kekes, drivers]);
+
+  const handleSelectQrVehicle = (queryOrId: string | number) => {
+    const clean = String(queryOrId).trim().toUpperCase().replace('#', '');
+    const matched = kekes.find(
+      k =>
+        String(k.id) === clean ||
+        k.plateNumber.toUpperCase() === clean ||
+        drivers.some(d => d.kekeId === k.id && d.driverIdCode.toUpperCase() === clean)
+    );
+    if (!matched) {
+      showModal({
+        title: 'Vehicle Not Found',
+        message: 'Could not find a USRide Keke or Cab matching that QR code / plate number. Try entering the plate (e.g. UNIBEN-01K) or Driver Code (e.g. DRV001).',
+        type: 'warning'
+      });
+      return;
+    }
+    setPreselectedKekeId(matched.id);
+    setVehicleType(matched.vehicleType);
+    setShowQrScannerModal(false);
+    setQrVehicleInput('');
+    if (userLocation.nearestLandmark && !pickupId) {
+      setPickupId(userLocation.nearestLandmark.id);
+    }
+    setBookingStep('locations');
+    synthSound.playChime();
   };
 
   const handleCancelBooking = async () => {
@@ -1516,6 +1571,118 @@ export const RiderView: React.FC = () => {
                 </div>
               )}
 
+              {/* 3.5 Vehicle QR Code Instant Booking Scanner / Selector Modal */}
+              {showQrScannerModal && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                  backdropFilter: 'blur(6px)',
+                  zIndex: 999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px'
+                }}>
+                  <div style={{
+                    backgroundColor: '#0f172a',
+                    border: '2px solid var(--uniben-gold)',
+                    borderRadius: '16px',
+                    padding: '16px',
+                    width: '100%',
+                    maxWidth: '340px',
+                    color: '#fff',
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--uniben-gold)', fontWeight: '800', fontSize: '14px' }}>
+                        <QrCode size={18} /> INSTANT VEHICLE QR BOOKING
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowQrScannerModal(false)}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#cbd5e1', margin: 0, lineHeight: 1.4 }}>
+                      Scan or select the QR code displayed on a USRide Solar Keke or Campus Cab to pre-select that exact vehicle and pay in-app (eliminating off-app transfers).
+                    </p>
+                    <div>
+                      <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '700' }}>Enter Vehicle Plate / Driver Code</label>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                        <input
+                          type="text"
+                          className="landmark-select-item"
+                          style={{ flex: 1, color: '#1e293b', fontWeight: '700', fontSize: '12px', textTransform: 'uppercase' }}
+                          placeholder="e.g. UNIBEN-01K or DRV001"
+                          value={qrVehicleInput}
+                          onChange={(e) => setQrVehicleInput(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSelectQrVehicle(qrVehicleInput)}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            backgroundColor: 'var(--uniben-gold)',
+                            color: '#0f172a',
+                            fontWeight: '800',
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Select
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '700' }}>Or Tap an Online Vehicle QR Directly</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginTop: '6px' }}>
+                        {kekes.filter(k => k.isOnline).map(v => {
+                          const drv = drivers.find(d => d.kekeId === v.id);
+                          return (
+                            <button
+                              key={`qr-veh-${v.id}`}
+                              type="button"
+                              onClick={() => handleSelectQrVehicle(v.id)}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                backgroundColor: 'rgba(255,255,255,0.06)',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                fontSize: '11px'
+                              }}
+                            >
+                              <div>
+                                <strong>{v.vehicleType === 'keke' ? '🛺 Keke' : '🚗 Cab'} #{v.id} ({v.plateNumber})</strong>
+                                <div style={{ fontSize: '10px', color: '#94a3b8' }}>
+                                  Driver: {drv?.name || 'Assigned'} ({drv?.driverIdCode || 'N/A'})
+                                </div>
+                              </div>
+                              <span style={{ color: 'var(--uniben-gold)', fontWeight: '800', fontSize: '10px' }}>
+                                Pre-select ➔
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Booking Step Overlay panel */}
               <div className="map-overlay-bottom" style={{ display: hideOverlay ? 'none' : 'block' }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
@@ -1582,9 +1749,33 @@ export const RiderView: React.FC = () => {
                       </div>
                     )}
                     
-                    <button className="primary-btn" style={{ width: '100%', marginTop: '4px' }} onClick={startBooking}>
-                      <Navigation size={16} /> Book USRide
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <button className="primary-btn" style={{ flex: 1.4 }} onClick={startBooking}>
+                        <Navigation size={16} /> Book USRide
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowQrScannerModal(true)}
+                        style={{
+                          flex: 1,
+                          padding: '10px 12px',
+                          borderRadius: '10px',
+                          border: '1.5px solid var(--uniben-green)',
+                          backgroundColor: '#f0fdf4',
+                          color: 'var(--uniben-green-dark)',
+                          fontWeight: '800',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                        title="Scan or enter a Keke/Cab QR code to pre-select that vehicle"
+                      >
+                        <QrCode size={15} /> Scan QR
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1593,8 +1784,37 @@ export const RiderView: React.FC = () => {
                   <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <h4 style={{ fontSize: '13px', fontWeight: '700' }}>Select Landmarks</h4>
-                      <button onClick={() => { setBookingStep('idle'); setPickupId(''); setDestId(''); }} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={16} /></button>
+                      <button onClick={() => { setBookingStep('idle'); setPickupId(''); setDestId(''); setPreselectedKekeId(null); }} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={16} /></button>
                     </div>
+
+                    {preselectedKekeId && (() => {
+                      const preVeh = kekes.find(k => k.id === preselectedKekeId);
+                      const preDrv = drivers.find(d => d.kekeId === preselectedKekeId);
+                      return preVeh ? (
+                        <div style={{
+                          backgroundColor: '#f0fdf4',
+                          border: '1.5px solid #059669',
+                          borderRadius: '8px',
+                          padding: '8px 10px',
+                          fontSize: '11px',
+                          color: '#065f46',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span>
+                            🎯 <strong>QR Pre-selected:</strong> {preVeh.vehicleType === 'keke' ? 'Solar Keke' : 'Campus Cab'} <strong>{preVeh.plateNumber}</strong> ({preDrv?.name || 'Driver'})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setPreselectedKekeId(null)}
+                            style={{ border: 'none', background: 'none', color: '#065f46', cursor: 'pointer', fontWeight: '800', fontSize: '10px' }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      ) : null;
+                    })()}
 
                     <button 
                       type="button"
