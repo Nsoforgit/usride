@@ -348,7 +348,7 @@ export const DriverView: React.FC = () => {
     );
   }
 
-  // Field-calibrated route distance & trips left above 40% reserve
+  // Field-calibrated route distance & trips left above 20% reserve
   const activeRouteDistanceKm = driverActiveTrip
     ? Math.max(0.5, (getDistanceMeters(
         driverActiveTrip.pickupLocation.lat,
@@ -655,18 +655,18 @@ export const DriverView: React.FC = () => {
                   <span style={{ fontSize: '11px', color: '#047857', backgroundColor: '#ecfdf5', padding: '3px 10px', borderRadius: '12px', fontWeight: '700', border: '1px solid #a7f3d0' }}>
                     Calibrated estimate (Manual Input)
                   </span>
-                  <div style={{ fontSize: '28px', fontWeight: '800', color: energySliderVal <= 40 ? '#ef4444' : 'var(--uniben-green)', marginTop: '8px' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '800', color: energySliderVal <= 20 ? '#ef4444' : 'var(--uniben-green)', marginTop: '8px' }}>
                     {estimatedTripsRemaining} Trips Left
                   </div>
                   <span style={{ fontSize: '11px', color: '#64748b' }}>
-                    Counted above the <strong>40% reserve floor</strong> (~{activeRouteDistanceKm.toFixed(1)} km route)
+                    Counted above the <strong>20% reserve floor</strong> (~{activeRouteDistanceKm.toFixed(1)} km route)
                   </span>
                 </div>
 
-                {energySliderVal <= 40 && (
+                {energySliderVal <= 20 && (
                   <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px', fontSize: '11px', color: '#991b1b', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <AlertTriangle size={16} color="#dc2626" />
-                    <span>🔌 Go and charge! Battery is at or below the 40% safe reserve floor.</span>
+                    <span>🔌 Go and charge! Battery is at or below the 20% safe reserve floor.</span>
                   </div>
                 )}
 
@@ -674,7 +674,7 @@ export const DriverView: React.FC = () => {
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold' }}>
                     <span>Keke Battery (Calibrated estimate)</span>
-                    <span style={{ color: energySliderVal <= 40 ? '#ef4444' : 'var(--uniben-green)' }}>{energySliderVal}%</span>
+                    <span style={{ color: energySliderVal <= 20 ? '#ef4444' : 'var(--uniben-green)' }}>{energySliderVal}%</span>
                   </div>
                   <input 
                     type="range" 
@@ -705,7 +705,7 @@ export const DriverView: React.FC = () => {
                 </div>
 
                 <div style={{ backgroundColor: '#f0fdf4', padding: '10px', borderRadius: '8px', fontSize: '11px', color: '#166534', border: '1px solid #bbf7d0' }}>
-                  💡 <strong>Field-calibrated rate:</strong> ~1% battery per km (~0.96%–1.06%/km). Trips left are calculated from route distance only above the <strong>40% battery reserve</strong>.
+                  💡 <strong>Field-calibrated rate:</strong> ~1% battery per km (~0.96%–1.06%/km). Trips left are calculated from route distance only above the <strong>20% battery reserve</strong>.
                 </div>
 
                 <button className="primary-btn" onClick={handleApplyEnergySettings}>
@@ -958,10 +958,10 @@ export const DriverView: React.FC = () => {
                   
                   {/* Battery Level Indicator or Cab Profit Tracker */}
                   {currentDriver.vehicleType === 'keke' ? (
-                    <div className="glass-panel-dark" style={{ padding: '8px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }} title="Calibrated estimate (~1%/km above 40% reserve)">
-                      <Battery size={14} style={{ color: currentKeke.currentBatteryPercent > 40 ? '#10b981' : '#ef4444' }} />
+                    <div className="glass-panel-dark" style={{ padding: '8px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }} title="Calibrated estimate (~1%/km above 20% reserve)">
+                      <Battery size={14} style={{ color: currentKeke.currentBatteryPercent > 20 ? '#10b981' : '#ef4444' }} />
                       <span style={{ fontWeight: 'bold' }}>{currentKeke.currentBatteryPercent}%</span>
-                      <span style={{ opacity: 0.85, fontSize: '9px' }}>· Calibrated est. ({currentTripsRemaining} trips &gt;40%)</span>
+                      <span style={{ opacity: 0.85, fontSize: '9px' }}>· Calibrated est. ({currentTripsRemaining} trips &gt;20%)</span>
                     </div>
                   ) : (
                     <div className="glass-panel-dark" style={{ padding: '8px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', backgroundColor: 'rgba(37, 99, 235, 0.9)' }}>
@@ -1045,11 +1045,11 @@ export const DriverView: React.FC = () => {
                 {/* IDLE state switches */}
                 {driverStep === 'idle' && (
                   <div className="glass-panel" style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {currentDriver.vehicleType === 'keke' && currentKeke.currentBatteryPercent <= 43 && (
+                    {currentDriver.vehicleType === 'keke' && currentKeke.currentBatteryPercent <= 20 && (
                       <div style={{
-                        backgroundColor: currentKeke.currentBatteryPercent <= 40 ? '#fef2f2' : '#fffbeb',
-                        border: `1px solid ${currentKeke.currentBatteryPercent <= 40 ? '#fecaca' : '#fde68a'}`,
-                        color: currentKeke.currentBatteryPercent <= 40 ? '#991b1b' : '#92400e',
+                        backgroundColor: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        color: '#991b1b',
                         padding: '8px 10px',
                         borderRadius: '8px',
                         fontSize: '11px',
@@ -1060,7 +1060,7 @@ export const DriverView: React.FC = () => {
                         gap: '8px'
                       }}>
                         <span>
-                          🔌 <strong>Go and charge!</strong> Battery is at {currentKeke.currentBatteryPercent}% ({currentKeke.currentBatteryPercent <= 40 ? 'At 40% reserve floor — new trips blocked' : 'Approaching 40% reserve'}).
+                          🔌 <strong>Go and charge!</strong> Battery is at {currentKeke.currentBatteryPercent}% (At/below 20% reserve floor — new trips blocked).
                         </span>
                         <button
                           onClick={chargeKeke}

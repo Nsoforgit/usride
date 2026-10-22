@@ -213,7 +213,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent'
         }}>
-          UNIBEN RIDE
+          USRide
         </h1>
         <p style={{
           fontSize: '11px',

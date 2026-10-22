@@ -1261,9 +1261,9 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const estimatedETAMins = calculateKekeETA(distanceKm, estimatedBumps, vehicleType);
     console.log(`[Field Model] Route ${pickup.name} → ${dest.name}: ${distanceKm.toFixed(2)}km, ${estimatedBumps} bumps, ETA: ${estimatedETAMins} mins, Battery drop (~1%/km): ${estimatedEnergyPercent.toFixed(1)}%`);
 
-    // ─── 40% Battery Reserve Guard & Proximity Matching ───────────────────────
+    // ─── 20% Battery Reserve Guard & Proximity Matching ───────────────────────
     const allOnlineVehiclesOfType = kekes.filter(k => k.isOnline && k.vehicleType === vehicleType);
-    // Only dispatch Kekes whose battery will remain >= 40% reserve after completing this route
+    // Only dispatch Kekes whose battery will remain >= 20% reserve after completing this route
     const onlineVehiclesOfType = allOnlineVehiclesOfType.filter(k =>
       k.vehicleType !== 'keke' ||
       (k.currentBatteryPercent > KEKE_BATTERY_SPEC.reserveFloorPercent &&
@@ -1272,8 +1272,8 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (vehicleType === 'keke' && allOnlineVehiclesOfType.length > 0 && onlineVehiclesOfType.length === 0) {
       showModal({
-        title: "🔋 40% Battery Reserve Guard",
-        message: `All online USRide Solar Kekes are currently at or near the 40% safe battery reserve floor. Completing this ${distanceKm.toFixed(1)} km trip (~${estimatedEnergyPercent.toFixed(1)}% battery) would breach the 40% reserve. Drivers have been alerted to go and charge at a Solar Hub!`,
+        title: "🔋 20% Battery Reserve Guard",
+        message: `All online USRide Solar Kekes are currently at or near the 20% safe battery reserve floor. Completing this ${distanceKm.toFixed(1)} km trip (~${estimatedEnergyPercent.toFixed(1)}% battery) would breach the 20% reserve. Drivers have been alerted to go and charge at a Solar Hub!`,
         type: 'warning'
       });
       return null;
@@ -1498,13 +1498,13 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
-    // 40% Battery Reserve Guard for Solar Kekes
+    // 20% Battery Reserve Guard for Solar Kekes
     if (currentDriver.vehicleType === 'keke' && currentKeke) {
       const tripDrop = currentTrip.energyUsedPercent || 2.2;
       const projectedBattery = currentKeke.currentBatteryPercent - tripDrop;
       if (currentKeke.currentBatteryPercent <= KEKE_BATTERY_SPEC.reserveFloorPercent || projectedBattery < KEKE_BATTERY_SPEC.reserveFloorPercent) {
         showModal({
-          title: "🔌 Go and Charge! (40% Reserve Guard)",
+          title: "🔌 Go and Charge! (20% Reserve Guard)",
           message: `⚠️ Accepting this trip would take your battery from ${currentKeke.currentBatteryPercent}% to ${projectedBattery.toFixed(1)}% (below the ${KEKE_BATTERY_SPEC.reserveFloorPercent}% safe reserve floor).\n\nPlease head to the nearest USRide Solar Charging Hub to recharge before accepting new trips!`,
           type: 'warning'
         });
@@ -1757,21 +1757,21 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
 
-    // 4. Reset keke seats & reduce battery (with 40% reserve Go-and-Charge alert)
+    // 4. Reset keke seats & reduce battery (with 20% reserve Go-and-Charge alert)
     setKekes(prev => prev.map(k => {
       if (k.id === trip.kekeId) {
         const maxSeats = k.vehicleType === 'keke' ? 5 : 4;
         const releasedSeats = trip.seatsBooked || (trip.rideType === 'drop' ? maxSeats : 1);
         if (k.vehicleType === 'keke') {
           const newBattery = Math.round(Math.max(0, k.currentBatteryPercent - batteryDrain) * 10) / 10;
-          const hoursRemaining = Math.max(0, Math.round((Math.max(0, newBattery - KEKE_BATTERY_SPEC.reserveFloorPercent) / 60) * 6 * 10) / 10);
+          const hoursRemaining = Math.max(0, Math.round((Math.max(0, newBattery - KEKE_BATTERY_SPEC.reserveFloorPercent) / 80) * 6 * 10) / 10);
           const updated = { ...k, currentSeatsAvailable: Math.min(maxSeats, k.currentSeatsAvailable + releasedSeats), currentBatteryPercent: newBattery, estimatedHoursRemaining: hoursRemaining };
           upsertVehicle(updated).catch(console.error);
-          if (newBattery <= KEKE_BATTERY_SPEC.reserveFloorPercent + 3) {
+          if (newBattery <= KEKE_BATTERY_SPEC.reserveFloorPercent) {
             setTimeout(() => {
               showModal({
                 title: "🔌 Go and Charge Alert!",
-                message: `Your Keke battery is now at ${newBattery}% (approaching the ${KEKE_BATTERY_SPEC.reserveFloorPercent}% safe reserve floor). Please head to the nearest USRide Solar Charging Hub to recharge!`,
+                message: `Your Keke battery is now at ${newBattery}% (at or below the ${KEKE_BATTERY_SPEC.reserveFloorPercent}% safe reserve floor). Please head to the nearest USRide Solar Charging Hub to recharge!`,
                 type: 'warning'
               });
             }, 600);

@@ -505,7 +505,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                   {kekes.filter(k => k.isOnline && k.vehicleType === 'keke').length} USRide Kekes · {kekes.filter(k => k.isOnline && k.vehicleType === 'cab').length} USRide Cabs
                 </div>
                 <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                  40% battery reserve guard active (~1%/km field rate)
+                  20% battery reserve guard active (~1%/km field rate)
                 </span>
               </div>
               <Check size={32} style={{ color: '#10b981' }} />
@@ -949,7 +949,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onExit }) => {
                 {avgKekeBattery}%
               </div>
               <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                ~1%/km field rate · 40% reserve floor · Drained: {totalEnergyDrained.toFixed(1)}%
+                ~1%/km field rate · 20% reserve floor · Drained: {totalEnergyDrained.toFixed(1)}%
               </span>
             </div>
 

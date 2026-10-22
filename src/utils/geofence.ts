@@ -6,7 +6,7 @@ export const KEKE_BATTERY_SPEC = {
   voltageV: 96,
   capacityAh: 62,          // average of 60Ah and 64Ah across the two battery models recorded
   energyWh: 5952,          // 96V × 62Ah
-  reserveFloorPercent: 40, // 40% minimum safe battery reserve floor
+  reserveFloorPercent: 20, // 20% minimum safe battery reserve floor before driver receives alert to go and charge
   avgTripDistanceKm: 2.15, // field-measured average UNIBEN trip distance (53.78 km / 25 trips)
   cruiseSpeedKmH: 24,      // observed average cruise speed in drive mode (field-measured)
   bumpSpeedKmH: 8,         // observed average speed while crossing a bump (2–14 km/h range, midpoint)
@@ -101,7 +101,7 @@ export const calculateBatteryDrop = (
 
 /**
  * Estimate remaining range in km given current battery percentage,
- * counting ONLY usable capacity above the 40% battery reserve floor.
+ * counting ONLY usable capacity above the 20% battery reserve floor.
  * Uses field-test consumption rate of ~1% per km.
  */
 export const estimateRangeKm = (
@@ -116,7 +116,7 @@ export const estimateRangeKm = (
 };
 
 /**
- * Calculate how many trips can be completed above the 40% battery reserve floor
+ * Calculate how many trips can be completed above the 20% battery reserve floor
  * given a specific route distance (or the 2.15 km campus average).
  */
 export const estimateTripsLeftAboveReserve = (

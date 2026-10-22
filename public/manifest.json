@@ -1,7 +1,7 @@
 {
-  "name": "USRide - UNIBEN Campus Rides",
+  "name": "USRide — Smart Campus Transport",
   "short_name": "USRide",
-  "description": "The smartest way to get around UNIBEN campus",
+  "description": "USRide — Smart Campus Transport around the University of Benin",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
