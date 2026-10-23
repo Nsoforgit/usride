@@ -265,12 +265,12 @@ export const RiderView: React.FC = () => {
   const nearestVehicleDistanceKm = nearestVehicleDistanceMeters !== null
     ? Math.round((nearestVehicleDistanceMeters / 1000) * 100) / 100
     : null;
-  // Suggest "Book a Full Ride (Drop) Instead" when nearest driver is far (>= 1.8 km driving distance) and rider is booking 1 or 2 shared seats
+  // Suggest "Book a Full Ride (Drop) Instead" when nearest driver is far (>= 2.0 km driving distance) and rider is booking 1 or 2 shared seats
   const shouldSuggestFullRide =
     rideType === 'shared' &&
     seatsCount <= 2 &&
     nearestVehicleDistanceKm !== null &&
-    nearestVehicleDistanceKm >= 1.8;
+    nearestVehicleDistanceKm >= 2.0;
 
 
 
@@ -2112,7 +2112,7 @@ export const RiderView: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Smart Non-Compulsory Suggestion when Drivers are Far Away */}
+                    {/* Smart Non-Compulsory Suggestion when Drivers are Far Away (>= 2.0 km) */}
                     {shouldSuggestFullRide && nearestVehicleDistanceKm !== null && (
                       <div style={{
                         backgroundColor: '#fffbeb',
@@ -2127,14 +2127,14 @@ export const RiderView: React.FC = () => {
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '800', color: '#b45309' }}>
                           <AlertTriangle size={14} color="#d97706" />
-                          <span>Drivers are ~{nearestVehicleDistanceKm.toFixed(1)} km away — Book a Full Ride instead?</span>
+                          <span>Drivers are ~2.0 km away — Book a Full Ride instead?</span>
                         </div>
                         <div style={{ lineHeight: 1.4, fontSize: '10.5px' }}>
-                          Available {vehicleType === 'keke' ? 'Kekes' : 'Cabs'} are currently far from <strong>{pickupLandmarkObj?.name}</strong>. Because drivers burn more {vehicleType === 'keke' ? 'battery' : 'fuel'} driving empty when there may be no other passengers along the way, they are much more likely to accept a <strong>Full Ride (Drop)</strong>.
+                          Available Kekes/Cabs are currently far from your pickup. Because drivers burn more battery/fuel driving empty when there may be no other passengers along the way, they are much more likely to accept a <strong>Full Ride (Drop)</strong>.
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
                           <span style={{ fontSize: '9.5px', color: '#b45309', fontStyle: 'italic' }}>
-                            Optional suggestion — you can still book {seatsCount} {seatsCount === 1 ? 'seat' : 'seats'} below.
+                            Optional suggestion — you can still book 1–2 seats below.
                           </span>
                           <button
                             type="button"
