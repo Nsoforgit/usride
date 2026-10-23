@@ -444,12 +444,12 @@ export const DriverView: React.FC = () => {
 
   // Field-calibrated route distance & trips left above 20% reserve
   const activeRouteDistanceKm = driverActiveTrip
-    ? Math.max(0.5, (getDistanceMeters(
+    ? Math.max(0.5, getDistanceMeters(
         driverActiveTrip.pickupLocation.lat,
         driverActiveTrip.pickupLocation.lng,
         driverActiveTrip.destinationLocation.lat,
         driverActiveTrip.destinationLocation.lng
-      ) / 1000) * 1.2)
+      ) / 1000)
     : KEKE_BATTERY_SPEC.avgTripDistanceKm;
   const estimatedTripsRemaining = estimateTripsLeftAboveReserve(energySliderVal, activeRouteDistanceKm);
   const currentTripsRemaining = estimateTripsLeftAboveReserve(currentKeke.currentBatteryPercent, activeRouteDistanceKm);

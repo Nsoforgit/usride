@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { fetchGoogleRoute, getDistanceMeters, estimateBumpsForRoute, calculateBatteryDrop, calculateKekeETA, estimateRangeKm, KEKE_BATTERY_SPEC, estimateTripsLeftAboveReserve, getTripBoardingCode } from '../utils/geofence';
+import { fetchGoogleRoute, getDistanceMeters, getLandmarkRoadDistanceKm, getPolylineDistanceMeters, estimateBumpsForRoute, calculateBatteryDrop, calculateKekeETA, estimateRangeKm, KEKE_BATTERY_SPEC, estimateTripsLeftAboveReserve, getTripBoardingCode } from '../utils/geofence';
 import { supabase } from '../lib/supabase';
 import {
   fetchAllRiders, fetchAllDrivers, fetchAllVehicles, fetchAllTrips, fetchAllTransactions, fetchAllIncidents,
@@ -1384,12 +1384,13 @@ export const USRideProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const dest = LANDMARKS.find(l => l.id === destId);
     if (!pickup || !dest) return null;
 
-    // Fetch route from Google Directions API
+    // Fetch route from Google Directions / Routes API / OSRM (also caches exact road distance)
     const route = await fetchGoogleRoute(pickup.lat, pickup.lng, dest.lat, dest.lng, GOOGLE_MAPS_API_KEY);
 
-    // ─── Field-Calibrated Battery (~1% per km) & ETA Estimation ───────────────
-    const distanceMeters = getDistanceMeters(pickup.lat, pickup.lng, dest.lat, dest.lng);
-    const distanceKm = Math.max(0.4, distanceMeters / 1000);
+    // ─── Field-Calibrated Battery (~1% per km) & ETA Estimation (using actual Road Distance) ───
+    const polyKm = getPolylineDistanceMeters(route) / 1000;
+    const landmarkRoadKm = getLandmarkRoadDistanceKm(pickup.id, dest.id, pickup.lat, pickup.lng, dest.lat, dest.lng);
+    const distanceKm = Math.max(0.4, Math.max(polyKm, landmarkRoadKm));
     const estimatedBumps = estimateBumpsForRoute(pickup.id, dest.id, distanceKm);
     const estimatedPassengers = rideType === 'drop' ? (vehicleType === 'keke' ? 3 : 3) : seatsBooked;
     const estimatedEnergyPercent = vehicleType === 'keke'

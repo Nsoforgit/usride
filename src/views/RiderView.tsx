@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useUSRide, LANDMARKS, Keke, Trip, Landmark } from '../context/USRideContext';
+import { useUSRide, LANDMARKS, Keke, Trip, Landmark, GOOGLE_MAPS_API_KEY } from '../context/USRideContext';
 import { UnibenMap } from '../components/UnibenMap';
 import { LocationPickerModal } from '../components/LocationPickerModal';
-import { calculateETA, snapCoordinatesToNearestLandmark, getDistanceMeters, getTripBoardingCode } from '../utils/geofence';
+import { calculateETA, snapCoordinatesToNearestLandmark, getDistanceMeters, getLandmarkRoadDistanceKm, fetchGoogleRoute, estimateBumpsForRoute, calculateKekeETA, getTripBoardingCode } from '../utils/geofence';
 import { synthSound } from '../utils/audio';
 import { useUserLocation } from '../hooks/useUserLocation';
 import { supabase } from '../lib/supabase';
@@ -232,6 +232,45 @@ export const RiderView: React.FC = () => {
     ? 50
     : 10 * calculatedSeats;
   const totalDebitAmount = totalFareAmount + schoolTransferFee;
+
+  // Pre-warm Google/OSRM road route distance cache as soon as pickup & destination are selected
+  const [liveRouteDistanceKm, setLiveRouteDistanceKm] = useState<number | null>(null);
+  useEffect(() => {
+    const p = LANDMARKS.find(l => l.id === pickupId);
+    const d = LANDMARKS.find(l => l.id === destId);
+    if (!p || !d || p.id === d.id) {
+      setLiveRouteDistanceKm(null);
+      return;
+    }
+    const initialRoadKm = getLandmarkRoadDistanceKm(p.id, d.id, p.lat, p.lng, d.lat, d.lng);
+    setLiveRouteDistanceKm(initialRoadKm);
+
+    let cancelled = false;
+    fetchGoogleRoute(p.lat, p.lng, d.lat, d.lng, GOOGLE_MAPS_API_KEY).then(() => {
+      if (!cancelled) {
+        const updatedKm = getLandmarkRoadDistanceKm(p.id, d.id, p.lat, p.lng, d.lat, d.lng);
+        setLiveRouteDistanceKm(updatedKm);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [pickupId, destId]);
+
+  // Compute driving distance from pickup landmark to the nearest online vehicle of the selected type
+  const pickupLandmarkObj = LANDMARKS.find(l => l.id === pickupId);
+  const destLandmarkObj = LANDMARKS.find(l => l.id === destId);
+  const onlineVehiclesOfSelectedType = kekes.filter(k => k.isOnline && k.vehicleType === vehicleType);
+  const nearestVehicleDistanceMeters = pickupLandmarkObj && onlineVehiclesOfSelectedType.length > 0
+    ? Math.min(...onlineVehiclesOfSelectedType.map(k => getDistanceMeters(k.lat, k.lng, pickupLandmarkObj.lat, pickupLandmarkObj.lng)))
+    : null;
+  const nearestVehicleDistanceKm = nearestVehicleDistanceMeters !== null
+    ? Math.round((nearestVehicleDistanceMeters / 1000) * 100) / 100
+    : null;
+  // Suggest "Book a Full Ride (Drop) Instead" when nearest driver is far (>= 1.8 km driving distance) and rider is booking 1 or 2 shared seats
+  const shouldSuggestFullRide =
+    rideType === 'shared' &&
+    seatsCount <= 2 &&
+    nearestVehicleDistanceKm !== null &&
+    nearestVehicleDistanceKm >= 1.8;
 
 
 
@@ -2046,6 +2085,73 @@ export const RiderView: React.FC = () => {
                             }}
                           >
                             +
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Route Driving Distance & ETA Pill */}
+                    {pickupLandmarkObj && destLandmarkObj && liveRouteDistanceKm !== null && (
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '7px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        fontSize: '11px',
+                        color: '#334155'
+                      }}>
+                        <span>
+                          🛣️ <strong>Driving Distance:</strong> {liveRouteDistanceKm.toFixed(1)} km
+                        </span>
+                        <span>
+                          ⏱️ <strong>Est. Trip Time:</strong> ~{calculateKekeETA(liveRouteDistanceKm, estimateBumpsForRoute(pickupLandmarkObj.id, destLandmarkObj.id, liveRouteDistanceKm), vehicleType)} mins
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Smart Non-Compulsory Suggestion when Drivers are Far Away */}
+                    {shouldSuggestFullRide && nearestVehicleDistanceKm !== null && (
+                      <div style={{
+                        backgroundColor: '#fffbeb',
+                        border: '1.5px solid #f59e0b',
+                        borderRadius: '10px',
+                        padding: '10px 12px',
+                        fontSize: '11px',
+                        color: '#92400e',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '800', color: '#b45309' }}>
+                          <AlertTriangle size={14} color="#d97706" />
+                          <span>Drivers are ~{nearestVehicleDistanceKm.toFixed(1)} km away — Book a Full Ride instead?</span>
+                        </div>
+                        <div style={{ lineHeight: 1.4, fontSize: '10.5px' }}>
+                          Available {vehicleType === 'keke' ? 'Kekes' : 'Cabs'} are currently far from <strong>{pickupLandmarkObj?.name}</strong>. Because drivers burn more {vehicleType === 'keke' ? 'battery' : 'fuel'} driving empty when there may be no other passengers along the way, they are much more likely to accept a <strong>Full Ride (Drop)</strong>.
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                          <span style={{ fontSize: '9.5px', color: '#b45309', fontStyle: 'italic' }}>
+                            Optional suggestion — you can still book {seatsCount} {seatsCount === 1 ? 'seat' : 'seats'} below.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setRideType('drop')}
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              backgroundColor: '#d97706',
+                              color: 'white',
+                              fontWeight: '800',
+                              fontSize: '10px',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            Switch to Full Ride ➔
                           </button>
                         </div>
                       </div>
